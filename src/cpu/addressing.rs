@@ -1,5 +1,3 @@
-use std::ptr::read;
-
 use crate::{
     bus::Bus,
     cpu::{
@@ -11,7 +9,7 @@ use crate::{
 pub fn resolve<B: Bus>(mode: Addressing, cpu: &mut Cpu6502, bus: &B) -> Operand {
     match mode {
         Addressing::Accumulator => Operand::None,
-        Addressing::Immideate => {
+        Addressing::Immediate => {
             let operand = Operand::Value(bus.read(cpu.pc));
             cpu.pc += 1;
 
@@ -43,14 +41,14 @@ pub fn resolve<B: Bus>(mode: Addressing, cpu: &mut Cpu6502, bus: &B) -> Operand 
 
             operand
         }
-        Addressing::IndexedAnbsoluteX => {
+        Addressing::IndexedAbsoluteX => {
             let bal = bus.read(cpu.pc);
             let bah = bus.read(cpu.pc + 1);
             cpu.pc += 2;
 
             Operand::Address(u16::from_le_bytes([bal, bah]).wrapping_add(cpu.x as u16))
         }
-        Addressing::IndexedAnbsoluteY => {
+        Addressing::IndexedAbsoluteY => {
             let bal = bus.read(cpu.pc);
             let bah = bus.read(cpu.pc + 1);
             cpu.pc += 2;
