@@ -1,6 +1,7 @@
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Flex::Center, Layout, VerticalAlignment::Top},
+    style::Style,
     widgets::{Block, BorderType},
 };
 use std::io;
@@ -31,32 +32,32 @@ fn render(frame: &mut Frame) {
     .spacing(1);
     let [left, middle, right] = frame.area().layout(&horizontal);
     let vertical = Layout::vertical([Constraint::Percentage(40), Constraint::Fill(1)]).spacing(1);
-    let [topL, bottomL] = left.layout(&vertical);
-    let [topR, bottomR] = right.layout(&vertical);
+    let [top_l, bottom_l] = left.layout(&vertical);
+    let [top_r, bottom_r] = right.layout(&vertical);
 
     frame.render_widget(
         Block::bordered()
             .border_type(BorderType::Rounded)
             .title("Registers"),
-        topL,
+        top_l,
     );
     frame.render_widget(
         Block::bordered()
             .border_type(BorderType::Rounded)
             .title("Stack"),
-        topR,
+        top_r,
     );
     frame.render_widget(
         Block::bordered()
             .border_type(BorderType::Rounded)
             .title("Memory"),
-        bottomL,
+        bottom_l,
     );
     frame.render_widget(
         Block::bordered()
             .border_type(BorderType::Rounded)
             .title("Instructions"),
-        bottomR,
+        bottom_r,
     );
     frame.render_widget(
         Block::bordered()
