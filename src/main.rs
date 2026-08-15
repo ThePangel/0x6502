@@ -31,7 +31,8 @@ fn render(frame: &mut Frame) {
     .spacing(1);
     let [left, middle, right] = frame.area().layout(&horizontal);
     let vertical = Layout::vertical([Constraint::Percentage(40), Constraint::Fill(1)]).spacing(1);
-    let vertical_rev = Layout::vertical([Constraint::Fill(1), Constraint::Percentage(40)]).spacing(1);
+    let vertical_rev =
+        Layout::vertical([Constraint::Fill(1), Constraint::Percentage(40)]).spacing(1);
     let [top_l, bottom_l] = left.layout(&vertical);
     let [top_r, bottom_r] = right.layout(&vertical_rev);
 

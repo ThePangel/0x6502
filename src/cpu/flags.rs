@@ -13,7 +13,7 @@ pub fn set_zero(cpu: &mut Cpu6502, status: bool) {
         cpu.p |= 0x02
     } else {
         cpu.p &= !0x02
-    } 
+    }
 }
 
 pub fn set_interrupt_disable(cpu: &mut Cpu6502, status: bool) {
@@ -32,12 +32,8 @@ pub fn set_decimal(cpu: &mut Cpu6502, status: bool) {
     }
 }
 
-pub fn set_break(cpu: &mut Cpu6502, status: bool) {
-    if status {
-        cpu.p |= 0x10
-    } else {
-        cpu.p &= !0x10
-    }
+pub fn set_break(p: u8) -> u8 {
+    p | 0x10
 }
 
 pub fn set_overflow(cpu: &mut Cpu6502, status: bool) {
@@ -70,10 +66,6 @@ pub fn get_interrupt_disable(cpu: &Cpu6502) -> bool {
 
 pub fn get_decimal(cpu: &Cpu6502) -> bool {
     (cpu.p & 0x08) != 0
-}
-
-pub fn get_break(cpu: &Cpu6502) -> bool {
-    (cpu.p & 0x10) != 0
 }
 
 pub fn get_overflow(cpu: &Cpu6502) -> bool {
