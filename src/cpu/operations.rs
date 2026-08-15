@@ -1,17 +1,14 @@
 use std::path::Prefix::VerbatimDisk;
 
 use crate::{
-    bus::Bus,
-    cpu::{
-        addressing,
-        cpu6502::Cpu6502,
-        flags::{
-            self, get_carry, get_decimal, get_negative, get_zero, set_break, set_carry,
-            set_interrupt_disable, set_negative, set_overflow, set_zero,
-        },
-        instructions::{
-            Operand::{self, Address},
-            Operation::{self, ADC, AND, ASL, BCC, BCS, BEQ, BIT, BMI, BNE, BPL, BRK},
+    bus::Bus, cpu::{
+        addressing, cpu6502::Cpu6502, flags::{
+            self, get_carry, get_decimal, get_negative, get_overflow, get_zero, set_break,
+            set_carry, set_decimal, set_interrupt_disable, set_negative, set_overflow, set_zero,
+        }, instructions::{
+            Operand::{self, Address}, Operation::{
+                self, ADC, AND, ASL, BCC, BCS, BEQ, BIT, BMI, BNE, BPL, BRK, BVC, BVS, CLC, CLD, CLI, CLV, CMP, CPX, CPY, DEC, DEX, DEY, EOR, INC, INX, INY, JMP, JSR,
+            },
         },
     },
 };
@@ -175,7 +172,151 @@ fn run_operation<B: Bus>(operation: Operation, operand: Operand, cpu: &mut Cpu65
 
             cpu.pc = u16::from_le_bytes([adl, adh]);
         }
+        BVC => {
+            let addr = addr.expect("BVC requires a address operand");
 
+            if !get_overflow(cpu) {
+                if (cpu.pc & 0xFF00) != (addr & 0xFF00) {
+                    cpu.cycles += 1
+                };
+                cpu.pc = addr;
+                cpu.cycles += 1;
+            }
+        }
+        BVS => {
+            let addr = addr.expect("BVC requires a address operand");
+
+            if get_overflow(cpu) {
+                if (cpu.pc & 0xFF00) != (addr & 0xFF00) {
+                    cpu.cycles += 1
+                };
+                cpu.pc = addr;
+                cpu.cycles += 1;
+            }
+        }
+        CLC => {
+            set_carry(cpu, false);
+        }
+        CLD => {
+            set_decimal(cpu, false);
+        }
+        CLI => {
+            set_interrupt_disable(cpu, false);
+        }
+        CLV => {
+            set_overflow(cpu, false);
+        }
+        CMP => {
+            let value = value.expect("CMP requires a value operand");
+
+            let compared_value = cpu.a.wrapping_sub(value);
+
+            set_carry(cpu, cpu.a >= value);
+            set_zero(cpu, cpu.a == value);
+            set_negative(cpu, (compared_value >> 7) & 0x01 != 0);
+        }
+        CPX => {
+            let value = value.expect("CPX requires a value operand");
+
+            let compared_value = cpu.x.wrapping_sub(value);
+
+            set_carry(cpu, cpu.x >= value);
+            set_zero(cpu, cpu.x == value);
+            set_negative(cpu, (compared_value >> 7) & 0x01 != 0);
+        }
+        CPY => {
+            let value = value.expect("CPY requires a value operand");
+
+            let compared_value = cpu.y.wrapping_sub(value);
+
+            set_carry(cpu, cpu.y >= value);
+            set_zero(cpu, cpu.y == value);
+            set_negative(cpu, (compared_value >> 7) & 0x01 != 0);
+        }
+        DEC => {
+            let value = value.expect("DEC requires a value operand");
+            let addr = addr.expect("DEC requires an address operand");
+
+            let decremented_value = value.wrapping_sub(1);
+
+            cpu.cycles += 1;
+            cpu.write_byte(bus, addr, decremented_value);
+
+            set_zero(cpu, decremented_value == 0);
+            set_negative(cpu, (decremented_value >> 7) & 0x01 != 0);
+        }
+        DEX => {
+            let decremented_value = cpu.x.wrapping_sub(1);
+
+            cpu.x = decremented_value;
+
+            set_zero(cpu, decremented_value == 0);
+            set_negative(cpu, (decremented_value >> 7) & 0x01 != 0);
+        }
+        DEY => {
+            let decremented_value = cpu.y.wrapping_sub(1);
+
+            cpu.y = decremented_value;
+
+            set_zero(cpu, decremented_value == 0);
+            set_negative(cpu, (decremented_value >> 7) & 0x01 != 0);
+        } 
+        EOR => {
+            let value = value.expect("EOR requires a  value operand");
+
+            let xor_value = value ^ cpu.a;
+
+            cpu.a = xor_value;
+
+            set_zero(cpu, xor_value == 0);
+            set_negative(cpu, (xor_value >> 7) & 0x01 != 0);
+        }
+        INC => {
+            let value = value.expect("DEC requires a value operand");
+            let addr = addr.expect("DEC requires an address operand");
+
+            let incremented_value = value.wrapping_add(1);
+
+            cpu.cycles += 1;
+            cpu.write_byte(bus, addr, incremented_value);
+
+            set_zero(cpu, incremented_value == 0);
+            set_negative(cpu, (incremented_value >> 7) & 0x01 != 0);
+        }
+        INX => {
+            let incremented_value = cpu.x.wrapping_add(1);
+
+            cpu.x = incremented_value;
+
+            set_zero(cpu, incremented_value == 0);
+            set_negative(cpu, (incremented_value >> 7) & 0x01 != 0);
+        }
+        INY => {
+            let incremented_value = cpu.y.wrapping_add(1);
+
+            cpu.y = incremented_value;
+
+            set_zero(cpu, incremented_value == 0);
+            set_negative(cpu, (incremented_value >> 7) & 0x01 != 0);
+
+
+        }
+        JMP => {
+            let addr = addr.expect("JMP requires an address operand");
+            cpu.pc = addr
+        }
+        JSR => {
+            let addr = addr.expect("JSR requires a address operand");
+
+            cpu.cycles += 1;
+            cpu.write_byte(bus, 0x0100 + cpu.sp as u16, ((cpu.pc - 1) >> 8) as u8);
+            cpu.sp -= 1;
+            cpu.write_byte(bus, 0x0100 + cpu.sp as u16, ((cpu.pc - 1) & 0xFF) as u8);
+            cpu.sp -= 1;
+
+
+            cpu.pc = addr
+        }
         _ => todo!("temp wildcard"),
     }
 }
