@@ -6,7 +6,7 @@ use crate::{
     },
 };
 
-pub fn resolve<B: Bus>(mode: Addressing, cpu: &mut Cpu6502, bus: &B) -> Operand {
+pub fn resolve<B: Bus>(mode: Addressing, cpu: &mut Cpu6502, bus: &mut B) -> Operand {
     match mode {
         Addressing::Accumulator => Operand::Accumulator,
         Addressing::Immediate => {

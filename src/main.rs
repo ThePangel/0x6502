@@ -1,9 +1,16 @@
+use crossterm::event::{self, Event, KeyCode, KeyEvent};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout},
-    widgets::{Block, BorderType},
+    style::{Color, Modifier, Style},
+    text::Text,
+    widgets::{Block, BorderType, List, ListState, Paragraph},
 };
-use std::io;
+use std::{io, time::Duration};
+use tui_term::{
+    vt100::{self, Parser},
+    widget::PseudoTerminal,
+};
 
 mod bus;
 mod cpu;
@@ -15,15 +22,68 @@ fn main() -> io::Result<()> {
 }
 
 fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
+    let mut parser = vt100::Parser::new(24, 80, 0);
+    let mut list_state = ListState::default().with_selected(Some(0));
+
     loop {
-        terminal.draw(render)?;
-        if crossterm::event::read()?.is_key_press() {
-            break Ok(());
+        terminal.draw(|frame| render_menu(frame, &mut list_state))?;
+
+        if event::poll(Duration::from_millis(16))? {
+            if let Event::Key(key) = event::read()? {
+                match key.code {
+                    KeyCode::Esc => return Ok(()),
+
+                    KeyCode::Down => list_state.select_next(),
+                    KeyCode::Up => list_state.select_previous(),
+                    KeyCode::Enter => match list_state.selected().unwrap() {
+                        0 => todo!("apple_I"),
+                        _ => todo!(),
+                    },
+                    _ => {}
+                }
+            }
         }
     }
 }
 
-fn render(frame: &mut Frame) {
+fn render_menu(frame: &mut Frame, list_state: &mut ListState) {
+    let vertical = Layout::vertical([
+        Constraint::Percentage(33),
+        Constraint::Percentage(15),
+        Constraint::Percentage(52),
+    ])
+    .spacing(1);
+    let [top, middle, bottom] = frame.area().layout(&vertical);
+
+    let title_text = " 
+    ██████╗         ██████╗  ███████╗ ██████╗ ██████╗ 
+    ██╔═████╗       ██╔═══╝  ██╔════╝██╔═████╗╚════██╗
+    ██║██╔██║██  ██ ███████╗ ███████╗██║██╔██║ █████╔╝
+    ████╔╝██║ ╚██╔╝ ██╔═══██╗╚════██║████╔╝██║██╔═══╝ 
+    ╚██████╔╝██╔╝██╗╚██████╔╝███████║╚██████╔╝███████╗
+     ╚═════╝ ╚═╝ ╚═╝ ╚═════╝ ╚══════╝ ╚═════╝ ╚══════╝
+                                                   ";
+
+    let title = Text::from(title_text);
+
+    let title_paragraph = Paragraph::new(title).style(Style::default().fg(Color::Green).bold());
+
+    let welcome = Paragraph::new("Welcome to 0x6502\n Please choose a system:")
+        .style(Style::default().fg(Color::Red).bold())
+        .centered();
+    frame.render_widget(title_paragraph, top);
+    frame.render_widget(welcome, middle);
+
+    let items = ["Apple I"];
+    let list = List::new(items)
+        .style(Color::White)
+        .highlight_style(Style::new().red().italic())
+        .highlight_symbol("> ");
+
+    frame.render_stateful_widget(list, bottom, list_state);
+}
+
+fn render_machine(frame: &mut Frame, parser: &Parser) {
     let horizontal = Layout::horizontal([
         Constraint::Percentage(20),
         Constraint::Percentage(60),
@@ -61,10 +121,12 @@ fn render(frame: &mut Frame) {
             .title("Instructions"),
         bottom_r,
     );
-    frame.render_widget(
+    let screen = parser.screen();
+    let pseudo_term = PseudoTerminal::new(screen).block(
         Block::bordered()
             .border_type(BorderType::Rounded)
             .title("Terminal"),
-        middle,
     );
+
+    frame.render_widget(pseudo_term, middle);
 }

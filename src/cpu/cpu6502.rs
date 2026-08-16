@@ -48,7 +48,7 @@ impl Cpu6502 {
         run_operation(instruction.operation, operand, self, bus);
     }
 
-    pub fn read_byte<B: Bus>(&mut self, bus: &B, addr: u16) -> u8 {
+    pub fn read_byte<B: Bus>(&mut self, bus: &mut B, addr: u16) -> u8 {
         self.cycles += 1;
         bus.read(addr)
     }
