@@ -1,5 +1,3 @@
-use std::ptr::read;
-
 use crate::bus::Bus;
 pub struct Cpu6502 {
     pub a: u8,
@@ -37,7 +35,7 @@ impl Cpu6502 {
     }
 
     pub fn step<B: Bus>(&mut self, bus: &B) {
-        let opcode = self.read_byte(bus, self.pc);
+        let _opcode = self.read_byte(bus, self.pc);
         self.pc += 1;
         self.cycles += 1;
     }

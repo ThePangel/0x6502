@@ -1,21 +1,18 @@
-use std::path::Prefix::VerbatimDisk;
-
 use crate::{
     bus::Bus,
     cpu::{
-        addressing,
         cpu6502::Cpu6502,
         flags::{
-            self, get_carry, get_decimal, get_negative, get_overflow, get_zero, set_break,
-            set_carry, set_decimal, set_interrupt_disable, set_negative, set_overflow, set_zero,
+            get_carry, get_decimal, get_negative, get_overflow, get_zero, set_break, set_carry,
+            set_decimal, set_interrupt_disable, set_negative, set_overflow, set_zero,
         },
         instructions::{
-            Addressing::Accumulator,
-            Operand::{self, Address},
+            Operand::{self},
             Operation::{
                 self, ADC, AND, ASL, BCC, BCS, BEQ, BIT, BMI, BNE, BPL, BRK, BVC, BVS, CLC, CLD,
                 CLI, CLV, CMP, CPX, CPY, DEC, DEX, DEY, EOR, INC, INX, INY, JMP, JSR, LDA, LDX,
-                LDY, LSR, NOP, ORA, PHA, PHP, PLA, PLP, ROL, ROR, RTI, RTS, SBC,
+                LDY, LSR, NOP, ORA, PHA, PHP, PLA, PLP, ROL, ROR, RTI, RTS, SBC, SEC, SED, SEI,
+                STA, STX, STY, TAX, TAY, TSX, TXA, TXS, TYA,
             },
         },
     },
@@ -478,7 +475,71 @@ fn run_operation<B: Bus>(operation: Operation, operand: Operand, cpu: &mut Cpu65
             set_zero(cpu, cpu.a == 0);
             set_negative(cpu, (cpu.a & 0x80) != 0);
         }
+        SEC => {
+            cpu.cycles += 1;
+            set_carry(cpu, true);
+        }
+        SED => {
+            cpu.cycles += 1;
+            set_decimal(cpu, true);
+        }
+        SEI => {
+            cpu.cycles += 1;
+            set_interrupt_disable(cpu, true);
+        }
+        STA => {
+            cpu.write_byte(bus, addr.expect("STA requires an address operand"), cpu.a);
+        }
+        STX => {
+            cpu.write_byte(bus, addr.expect("STX requires an address operand"), cpu.x);
+        }
+        STY => {
+            cpu.write_byte(bus, addr.expect("STY requires an address operand"), cpu.y);
+        }
+        TAX => {
+            cpu.cycles += 1;
 
-        _ => todo!("temp wildcard"),
+            cpu.x = cpu.a;
+
+            set_zero(cpu, cpu.x == 0);
+            set_negative(cpu, ((cpu.x >> 7) & 0x01) != 0);
+        }
+        TAY => {
+            cpu.cycles += 1;
+
+            cpu.y = cpu.a;
+
+            set_zero(cpu, cpu.y == 0);
+            set_negative(cpu, ((cpu.y >> 7) & 0x01) != 0);
+        }
+        TSX => {
+            cpu.cycles += 1;
+
+            cpu.x = cpu.sp;
+
+            set_zero(cpu, cpu.x == 0);
+            set_negative(cpu, ((cpu.x >> 7) & 0x01) != 0);
+        }
+        TXA => {
+            cpu.cycles += 1;
+
+            cpu.a = cpu.x;
+
+            set_zero(cpu, cpu.a == 0);
+            set_negative(cpu, ((cpu.a >> 7) & 0x01) != 0);
+        }
+        TXS => {
+            cpu.cycles += 1;
+
+            cpu.sp = cpu.x;
+        }
+        TYA => {
+            cpu.cycles += 1;
+
+            cpu.a = cpu.y;
+
+            set_zero(cpu, cpu.a == 0);
+            set_negative(cpu, ((cpu.a >> 7) & 0x01) != 0);
+        }
     }
 }
