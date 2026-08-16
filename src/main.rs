@@ -6,15 +6,25 @@ use ratatui::{
     text::Text,
     widgets::{Block, BorderType, List, ListState, Paragraph},
 };
-use std::{io, time::Duration};
+use std::{
+    io,
+    time::{Duration, Instant},
+};
 use tui_term::{
     vt100::{self, Parser},
     widget::PseudoTerminal,
 };
 
+use crate::machines::apple_1::apple1::{self, Apple1};
+
 mod bus;
 mod cpu;
 mod machines;
+
+enum AppState {
+    Menu,
+    Apple1(Apple1),
+}
 
 fn main() -> io::Result<()> {
     ratatui::run(app)?;
@@ -22,24 +32,39 @@ fn main() -> io::Result<()> {
 }
 
 fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
+    let mut last_tick = Instant::now();
+
     let mut parser = vt100::Parser::new(24, 80, 0);
     let mut list_state = ListState::default().with_selected(Some(0));
+    let mut state = AppState::Menu;
 
     loop {
-        terminal.draw(|frame| render_menu(frame, &mut list_state))?;
+        match &mut state {
+            AppState::Menu => {
+                terminal.draw(|frame| render_menu(frame, &mut list_state))?;
+            }
+            AppState::Apple1(apple1) => {
+                terminal.draw(|frame| render_machine(frame, &parser))?;
+            }
+        }
 
         if event::poll(Duration::from_millis(16))? {
             if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Esc => return Ok(()),
-
-                    KeyCode::Down => list_state.select_next(),
-                    KeyCode::Up => list_state.select_previous(),
-                    KeyCode::Enter => match list_state.selected().unwrap() {
-                        0 => todo!("apple_I"),
-                        _ => todo!(),
+                match &state {
+                    AppState::Menu => match key.code {
+                        KeyCode::Esc => return Ok(()),
+                        KeyCode::Down => list_state.select_next(),
+                        KeyCode::Up => list_state.select_previous(),
+                        KeyCode::Enter => match list_state.selected().unwrap() {
+                            0 => state = AppState::Apple1(Apple1::new()),
+                            _ => {}
+                        },
+                        _ => {}
                     },
-                    _ => {}
+                    AppState::Apple1(apple1) => match key.code {
+                        KeyCode::Esc => state = AppState::Menu,
+                        _ => {}
+                    },
                 }
             }
         }

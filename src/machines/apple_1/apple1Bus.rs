@@ -6,12 +6,12 @@ const WOZMON: &[u8] = include_bytes!("./roms/wozmon.bin");
 const WOZACI: &[u8] = include_bytes!("./roms/wozaci.bin");
 const INTBASIC: &[u8] = include_bytes!("./roms/apple1basic.bin");
 
-struct Apple1Bus {
+pub struct Apple1Bus {
     pub memory: [u8; 65536],
 }
 
 impl Apple1Bus {
-    fn new() -> Self {
+    pub fn new() -> Self {
         let mut memory: [u8; 65536] = [0; 65536];
 
         memory[0xFF00..=0xFFFF].copy_from_slice(WOZMON);

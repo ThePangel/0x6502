@@ -365,7 +365,7 @@ pub fn run_operation<B: Bus>(
                 None => cpu.read_byte(bus, addr.expect("LSR requires an address operand")),
             };
 
-            set_carry(cpu, value & 0x80 != 0);
+            set_carry(cpu, value & 0x01 != 0);
 
             value >>= 1;
 
@@ -381,7 +381,7 @@ pub fn run_operation<B: Bus>(
         ORA => {
             let value = cpu.read_byte(bus, addr.expect("ORA requires an address operand"));
 
-            cpu.a ^= value;
+            cpu.a |= value;
 
             set_zero(cpu, cpu.a == 0);
             set_negative(cpu, (cpu.a & 0x80) != 0);
@@ -393,7 +393,7 @@ pub fn run_operation<B: Bus>(
         }
         PHP => {
             cpu.cycles += 1;
-            cpu.write_byte(bus, 0x0100 + cpu.sp as u16, cpu.p);
+            cpu.write_byte(bus, 0x0100 + cpu.sp as u16, set_break(cpu.p));
             cpu.sp = cpu.sp.wrapping_sub(1);
         }
         PLA => {
