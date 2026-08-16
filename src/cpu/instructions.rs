@@ -84,7 +84,7 @@ pub enum Operand {
     Implied,
 }
 
-pub fn run_instruction(opcode: u8) -> Instruction {
+pub fn get_instruction(opcode: u8) -> Instruction {
     match opcode {
         0x69 => Instruction {
             operation: Operation::ADC,

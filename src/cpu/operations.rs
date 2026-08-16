@@ -18,7 +18,12 @@ use crate::{
     },
 };
 
-fn run_operation<B: Bus>(operation: Operation, operand: Operand, cpu: &mut Cpu6502, bus: &B) {
+pub fn run_operation<B: Bus>(
+    operation: Operation,
+    operand: Operand,
+    cpu: &mut Cpu6502,
+    bus: &mut B,
+) {
     let (accumulator, addr) = match operand {
         Operand::Address(addr) => (None, Some(addr)),
         Operand::Accumulator => (Some(cpu.a), None),
@@ -166,12 +171,12 @@ fn run_operation<B: Bus>(operation: Operation, operand: Operand, cpu: &mut Cpu65
             cpu.pc += 1;
 
             cpu.write_byte(bus, 0x0100 + cpu.sp as u16, (cpu.pc >> 8) as u8);
-            cpu.sp -= 1;
+            cpu.sp = cpu.sp.wrapping_sub(1);
             cpu.write_byte(bus, 0x0100 + cpu.sp as u16, (cpu.pc & 0xFF) as u8);
-            cpu.sp -= 1;
+            cpu.sp = cpu.sp.wrapping_sub(1);
 
             cpu.write_byte(bus, 0x0100 + cpu.sp as u16, set_break(cpu.p));
-            cpu.sp -= 1;
+            cpu.sp = cpu.sp.wrapping_sub(1);
 
             set_interrupt_disable(cpu, true);
 
@@ -320,13 +325,13 @@ fn run_operation<B: Bus>(operation: Operation, operand: Operand, cpu: &mut Cpu65
                 0x0100 + cpu.sp as u16,
                 (cpu.pc.wrapping_sub(1) >> 8) as u8,
             );
-            cpu.sp -= 1;
+            cpu.sp = cpu.sp.wrapping_sub(1);
             cpu.write_byte(
                 bus,
                 0x0100 + cpu.sp as u16,
                 (cpu.pc.wrapping_sub(1) & 0xFF) as u8,
             );
-            cpu.sp -= 1;
+            cpu.sp = cpu.sp.wrapping_sub(1);
 
             cpu.pc = addr
         }
@@ -384,21 +389,21 @@ fn run_operation<B: Bus>(operation: Operation, operand: Operand, cpu: &mut Cpu65
         PHA => {
             cpu.cycles += 1;
             cpu.write_byte(bus, 0x0100 + cpu.sp as u16, cpu.a);
-            cpu.sp -= 1;
+            cpu.sp = cpu.sp.wrapping_sub(1);
         }
         PHP => {
             cpu.cycles += 1;
             cpu.write_byte(bus, 0x0100 + cpu.sp as u16, cpu.p);
-            cpu.sp -= 1;
+            cpu.sp = cpu.sp.wrapping_sub(1);
         }
         PLA => {
             cpu.cycles += 2;
-            cpu.sp += 1;
+            cpu.sp = cpu.sp.wrapping_add(1);
             cpu.a = cpu.read_byte(bus, 0x0100 + cpu.sp as u16);
         }
         PLP => {
             cpu.cycles += 2;
-            cpu.sp += 1;
+            cpu.sp = cpu.sp.wrapping_add(1);
             cpu.p = cpu.read_byte(bus, 0x0100 + cpu.sp as u16) & !0x10;
         }
         ROL => {
@@ -442,20 +447,20 @@ fn run_operation<B: Bus>(operation: Operation, operand: Operand, cpu: &mut Cpu65
         RTI => {
             cpu.cycles += 2;
 
-            cpu.sp += 1;
+            cpu.sp = cpu.sp.wrapping_add(1);
             cpu.p = cpu.read_byte(bus, 0x0100 + cpu.sp as u16) & !0x10;
-            cpu.sp += 1;
+            cpu.sp = cpu.sp.wrapping_add(1);
             let pcl = cpu.read_byte(bus, 0x0100 + cpu.sp as u16);
-            cpu.sp += 1;
+            cpu.sp = cpu.sp.wrapping_add(1);
             let pch = cpu.read_byte(bus, 0x0100 + cpu.sp as u16);
             cpu.pc = u16::from_le_bytes([pcl, pch]);
         }
         RTS => {
             cpu.cycles += 2;
 
-            cpu.sp += 1;
+            cpu.sp = cpu.sp.wrapping_add(1);
             let pcl = cpu.read_byte(bus, 0x0100 + cpu.sp as u16);
-            cpu.sp += 1;
+            cpu.sp = cpu.sp.wrapping_add(1);
             let pch = cpu.read_byte(bus, 0x0100 + cpu.sp as u16);
             cpu.cycles += 1;
             cpu.pc = u16::from_le_bytes([pcl, pch]) + 1;

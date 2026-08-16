@@ -7,6 +7,7 @@ use std::io;
 
 mod bus;
 mod cpu;
+mod machines;
 
 fn main() -> io::Result<()> {
     ratatui::run(app)?;
