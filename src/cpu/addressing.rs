@@ -3,11 +3,12 @@ use crate::{
     cpu::{
         cpu6502::Cpu6502,
         instructions::{Addressing, Operand},
+        operations::run_operation,
     },
 };
 
-pub fn resolve<B: Bus>(mode: Addressing, cpu: &mut Cpu6502, bus: &mut B) -> Operand {
-    match mode {
+pub fn resolve<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
+    match cpu.opcode_state.current_opcode.addressing {
         Addressing::Accumulator => Operand::Accumulator,
         Addressing::Immediate => {
             let operand = Operand::Address(cpu.pc);
@@ -15,13 +16,21 @@ pub fn resolve<B: Bus>(mode: Addressing, cpu: &mut Cpu6502, bus: &mut B) -> Oper
 
             operand
         }
-        Addressing::Absolute => {
-            let adl = cpu.read_byte(bus, cpu.pc);
-            let adh = cpu.read_byte(bus, cpu.pc.wrapping_add(1));
-            cpu.pc = cpu.pc.wrapping_add(2);
+        Addressing::Absolute => match cpu.opcode_state.opcode_cycle {
+            1 => {
+                cpu.opcode_state.latch = cpu.read_byte(bus, cpu.pc);
+                cpu.pc = cpu.pc.wrapping_add(1);
+            }
+            2 => {
+                let adh = cpu.read_byte(bus, cpu.pc);
+                cpu.pc = cpu.pc.wrapping_add(1);
 
-            Operand::Address(u16::from_le_bytes([adl, adh]))
-        }
+                cpu.opcode_state.operand =
+                    Operand::Address(u16::from_le_bytes([cpu.opcode_state.latch, adh]));
+                run_operation(cpu, bus);
+            }
+            _ => (),
+        },
         Addressing::ZPage => {
             let operand = Operand::Address(cpu.read_byte(bus, cpu.pc) as u16);
             cpu.pc = cpu.pc.wrapping_add(1);
@@ -46,7 +55,7 @@ pub fn resolve<B: Bus>(mode: Addressing, cpu: &mut Cpu6502, bus: &mut B) -> Oper
             cpu.pc = cpu.pc.wrapping_add(2);
 
             if bal.checked_add(cpu.x).is_none() {
-                cpu.cycles = cpu.cycles.wrapping_add(1);
+                cpu.opcode_state.page_cross = true
             }
 
             Operand::Address(u16::from_le_bytes([bal, bah]).wrapping_add(cpu.x as u16))
@@ -57,7 +66,7 @@ pub fn resolve<B: Bus>(mode: Addressing, cpu: &mut Cpu6502, bus: &mut B) -> Oper
             cpu.pc = cpu.pc.wrapping_add(2);
 
             if bal.checked_add(cpu.y).is_none() {
-                cpu.cycles = cpu.cycles.wrapping_add(1);
+                cpu.opcode_state.page_cross = true
             }
             Operand::Address(u16::from_le_bytes([bal, bah]).wrapping_add(cpu.y as u16))
         }
@@ -83,7 +92,7 @@ pub fn resolve<B: Bus>(mode: Addressing, cpu: &mut Cpu6502, bus: &mut B) -> Oper
             let bah = cpu.read_byte(bus, z_page_addr.wrapping_add(1) as u16);
 
             if bal.checked_add(cpu.y).is_none() {
-                cpu.cycles = cpu.cycles.wrapping_add(1);
+                cpu.opcode_state.page_cross = true
             }
 
             cpu.pc = cpu.pc.wrapping_add(1);

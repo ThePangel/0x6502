@@ -18,19 +18,14 @@ use crate::{
     },
 };
 
-pub fn run_operation<B: Bus>(
-    operation: Operation,
-    operand: Operand,
-    cpu: &mut Cpu6502,
-    bus: &mut B,
-) {
-    let (accumulator, addr) = match operand {
+pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
+    let (accumulator, addr) = match cpu.opcode_state.operand {
         Operand::Address(addr) => (None, Some(addr)),
         Operand::Accumulator => (Some(cpu.a), None),
         Operand::Implied => (None, None),
     };
 
-    match operation {
+    match cpu.opcode_state.current_opcode.operation {
         ADC => {
             let value = cpu.read_byte(bus, addr.expect("ADC requires an address operand"));
 
