@@ -7,13 +7,12 @@ use crate::{
             set_decimal, set_interrupt_disable, set_negative, set_overflow, set_zero,
         },
         instructions::{
-            Operand::{self},
-            Operation::{
+            Addressing::{self, ZPage}, Operand::{self}, Operation::{
                 self, ADC, AND, ASL, BCC, BCS, BEQ, BIT, BMI, BNE, BPL, BRK, BVC, BVS, CLC, CLD,
                 CLI, CLV, CMP, CPX, CPY, DEC, DEX, DEY, EOR, INC, INX, INY, JMP, JSR, LDA, LDX,
                 LDY, LSR, NOP, ORA, PHA, PHP, PLA, PLP, ROL, ROR, RTI, RTS, SBC, SEC, SED, SEI,
                 STA, STX, STY, TAX, TAY, TSX, TXA, TXS, TYA,
-            },
+            }
         },
     },
 };
@@ -24,6 +23,7 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
         Operand::Accumulator => (Some(cpu.a), None),
         Operand::Implied => (None, None),
     };
+    
 
     match cpu.opcode_state.current_opcode.operation {
         ADC => {
@@ -74,7 +74,8 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
                 Some(accumulator) => accumulator,
                 None => cpu.read_byte(bus, addr.expect("ASL requires an address operand")),
             };
-
+            
+            
             set_carry(cpu, value & 0x80 != 0);
 
             value <<= 1;
@@ -91,11 +92,8 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
             let addr = addr.expect("BCC requires a address operand");
 
             if !get_carry(cpu) {
-                if (cpu.pc & 0xFF00) != (addr & 0xFF00) {
-                    cpu.cycles += 1
-                };
-                cpu.pc = addr;
-                cpu.cycles += 1;
+               cpu.opcode_state.branch_taken = true;
+               cpu.pc = addr;
             }
         }
         BCS => {

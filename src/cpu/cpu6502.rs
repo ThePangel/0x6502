@@ -22,7 +22,9 @@ pub struct OpcodeState {
 
     pub page_cross: bool,
 
-    pub latch: u8
+    pub latch: u8,
+
+    pub branch_taken: bool
 }
 pub struct Cpu6502 {
     pub a: u8,
@@ -60,7 +62,8 @@ impl Cpu6502 {
                 opcode_cycle: 0,
                 page_cross: false,
                 operand: Operand::Implied,
-                latch: 0
+                latch: 0,
+                branch_taken: false
             },
         }
     }
