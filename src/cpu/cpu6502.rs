@@ -24,7 +24,23 @@ pub struct OpcodeState {
 
     pub latch: u8,
 
-    pub branch_taken: bool
+    pub branch_taken: bool,
+}
+
+impl OpcodeState {
+    pub fn new() -> Self {
+        OpcodeState {
+            current_opcode: Instruction {
+                operation: NOP,
+                addressing: Implied,
+            },
+            opcode_cycle: 0,
+            page_cross: false,
+            operand: Operand::Implied,
+            latch: 0,
+            branch_taken: false,
+        }
+    }
 }
 pub struct Cpu6502 {
     pub a: u8,
@@ -54,17 +70,7 @@ impl Cpu6502 {
             sp: 0xFF,
             p: 0,
             cycles: 0,
-            opcode_state: OpcodeState {
-                current_opcode: Instruction {
-                    operation: NOP,
-                    addressing: Implied,
-                },
-                opcode_cycle: 0,
-                page_cross: false,
-                operand: Operand::Implied,
-                latch: 0,
-                branch_taken: false
-            },
+            opcode_state: OpcodeState::new(),
         }
     }
     pub fn reset<B: Bus>(&mut self, bus: &mut B) {
@@ -76,6 +82,7 @@ impl Cpu6502 {
 
     pub fn cycle<B: Bus>(&mut self, bus: &mut B) {
         if self.opcode_state.opcode_cycle == 0 {
+            self.opcode_state = OpcodeState::new();
             let opcode = self.read_byte(bus, self.pc);
             self.pc = self.pc.wrapping_add(1);
             self.opcode_state.current_opcode = get_instruction(opcode);
@@ -85,14 +92,15 @@ impl Cpu6502 {
     }
 
     pub fn read_byte<B: Bus>(&mut self, bus: &mut B, addr: u16) -> u8 {
-        self.cycles += 1;
+        self.cycles = self.cycles.wrapping_add(1);
         self.opcode_state.opcode_cycle = self.opcode_state.opcode_cycle.wrapping_add(1);
 
         bus.read(addr)
     }
 
     pub fn write_byte<B: Bus>(&mut self, bus: &mut B, addr: u16, byte: u8) {
-        self.cycles += 1;
+        self.cycles = self.cycles.wrapping_add(1);
+
         self.opcode_state.opcode_cycle = self.opcode_state.opcode_cycle.wrapping_add(1);
 
         bus.write(addr, byte);

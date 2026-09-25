@@ -7,12 +7,13 @@ use crate::{
             set_decimal, set_interrupt_disable, set_negative, set_overflow, set_zero,
         },
         instructions::{
-            Addressing::{self, ZPage}, Operand::{self}, Operation::{
-                self, ADC, AND, ASL, BCC, BCS, BEQ, BIT, BMI, BNE, BPL, BRK, BVC, BVS, CLC, CLD,
-                CLI, CLV, CMP, CPX, CPY, DEC, DEX, DEY, EOR, INC, INX, INY, JMP, JSR, LDA, LDX,
-                LDY, LSR, NOP, ORA, PHA, PHP, PLA, PLP, ROL, ROR, RTI, RTS, SBC, SEC, SED, SEI,
-                STA, STX, STY, TAX, TAY, TSX, TXA, TXS, TYA,
-            }
+            Operand::{self},
+            Operation::{
+                ADC, AND, ASL, BCC, BCS, BEQ, BIT, BMI, BNE, BPL, BRK, BVC, BVS, CLC, CLD, CLI,
+                CLV, CMP, CPX, CPY, DEC, DEX, DEY, EOR, INC, INX, INY, JMP, JSR, LDA, LDX, LDY,
+                LSR, NOP, ORA, PHA, PHP, PLA, PLP, ROL, ROR, RTI, RTS, SBC, SEC, SED, SEI, STA,
+                STX, STY, TAX, TAY, TSX, TXA, TXS, TYA,
+            },
         },
     },
 };
@@ -23,7 +24,6 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
         Operand::Accumulator => (Some(cpu.a), None),
         Operand::Implied => (None, None),
     };
-    
 
     match cpu.opcode_state.current_opcode.operation {
         ADC => {
@@ -72,10 +72,9 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
         ASL => {
             let mut value = match accumulator {
                 Some(accumulator) => accumulator,
-                None => cpu.read_byte(bus, addr.expect("ASL requires an address operand")),
+                None => cpu.opcode_state.latch,
             };
-            
-            
+
             set_carry(cpu, value & 0x80 != 0);
 
             value <<= 1;
@@ -92,30 +91,30 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
             let addr = addr.expect("BCC requires a address operand");
 
             if !get_carry(cpu) {
-               cpu.opcode_state.branch_taken = true;
-               cpu.pc = addr;
+                cpu.opcode_state.branch_taken = true;
+                cpu.pc = addr;
+            } else {
+                cpu.opcode_state.opcode_cycle = 0;
             }
         }
         BCS => {
             let addr = addr.expect("BCC requires a address operand");
 
             if get_carry(cpu) {
-                if (cpu.pc & 0xFF00) != (addr & 0xFF00) {
-                    cpu.cycles += 1
-                };
+                cpu.opcode_state.branch_taken = true;
                 cpu.pc = addr;
-                cpu.cycles += 1;
+            } else {
+                cpu.opcode_state.opcode_cycle = 0;
             }
         }
         BEQ => {
             let addr = addr.expect("BCC requires a address operand");
 
             if get_zero(cpu) {
-                if (cpu.pc & 0xFF00) != (addr & 0xFF00) {
-                    cpu.cycles += 1
-                };
+                cpu.opcode_state.branch_taken = true;
                 cpu.pc = addr;
-                cpu.cycles += 1;
+            } else {
+                cpu.opcode_state.opcode_cycle = 0;
             }
         }
         BIT => {
@@ -131,73 +130,53 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
             let addr = addr.expect("BMI requires a address operand");
 
             if get_negative(cpu) {
-                if (cpu.pc & 0xFF00) != (addr & 0xFF00) {
-                    cpu.cycles += 1
-                };
+                cpu.opcode_state.branch_taken = true;
                 cpu.pc = addr;
-                cpu.cycles += 1;
+            } else {
+                cpu.opcode_state.opcode_cycle = 0;
             }
         }
         BNE => {
             let addr = addr.expect("BNE requires a address operand");
 
             if !get_zero(cpu) {
-                if (cpu.pc & 0xFF00) != (addr & 0xFF00) {
-                    cpu.cycles += 1
-                };
+                cpu.opcode_state.branch_taken = true;
                 cpu.pc = addr;
-                cpu.cycles += 1;
+            } else {
+                cpu.opcode_state.opcode_cycle = 0;
             }
         }
         BPL => {
             let addr = addr.expect("BPL requires a address operand");
 
             if !get_negative(cpu) {
-                if (cpu.pc & 0xFF00) != (addr & 0xFF00) {
-                    cpu.cycles += 1
-                };
+                cpu.opcode_state.branch_taken = true;
                 cpu.pc = addr;
-                cpu.cycles += 1;
+            } else {
+                cpu.opcode_state.opcode_cycle = 0;
             }
         }
         BRK => {
-            cpu.pc += 1;
-
-            cpu.write_byte(bus, 0x0100 + cpu.sp as u16, (cpu.pc >> 8) as u8);
-            cpu.sp = cpu.sp.wrapping_sub(1);
-            cpu.write_byte(bus, 0x0100 + cpu.sp as u16, (cpu.pc & 0xFF) as u8);
-            cpu.sp = cpu.sp.wrapping_sub(1);
-
-            cpu.write_byte(bus, 0x0100 + cpu.sp as u16, set_break(cpu.p));
-            cpu.sp = cpu.sp.wrapping_sub(1);
-
-            set_interrupt_disable(cpu, true);
-
-            let adl = cpu.read_byte(bus, 0xFFFE);
-            let adh = cpu.read_byte(bus, 0xFFFF);
-
-            cpu.pc = u16::from_le_bytes([adl, adh]);
+            // Handleld In addressing
         }
         BVC => {
             let addr = addr.expect("BVC requires a address operand");
 
             if !get_overflow(cpu) {
-                if (cpu.pc & 0xFF00) != (addr & 0xFF00) {
-                    cpu.cycles += 1
-                };
+                cpu.opcode_state.branch_taken = true;
                 cpu.pc = addr;
-                cpu.cycles += 1;
+            } else {
+                cpu.opcode_state.opcode_cycle = 0;
             }
         }
         BVS => {
             let addr = addr.expect("BVC requires a address operand");
 
             if get_overflow(cpu) {
-                if (cpu.pc & 0xFF00) != (addr & 0xFF00) {
-                    cpu.cycles += 1
-                };
+                cpu.opcode_state.branch_taken = true;
                 cpu.pc = addr;
-                cpu.cycles += 1;
+            } else {
+                cpu.opcode_state.opcode_cycle = 0;
             }
         }
         CLC => {
@@ -240,12 +219,11 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
             set_negative(cpu, (compared_value >> 7) & 0x01 != 0);
         }
         DEC => {
-            let value = cpu.read_byte(bus, addr.expect("DEC requires an address operand"));
+            let value = cpu.opcode_state.latch;
             let addr = addr.expect("DEC requires an address operand");
 
             let decremented_value = value.wrapping_sub(1);
 
-            cpu.cycles += 1;
             cpu.write_byte(bus, addr, decremented_value);
 
             set_zero(cpu, decremented_value == 0);
@@ -278,12 +256,10 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
             set_negative(cpu, (xor_value >> 7) & 0x01 != 0);
         }
         INC => {
-            let value = cpu.read_byte(bus, addr.expect("INC requires an address operand"));
+            let value = cpu.opcode_state.latch;
             let addr = addr.expect("DEC requires an address operand");
 
             let incremented_value = value.wrapping_add(1);
-
-            cpu.cycles += 1;
             cpu.write_byte(bus, addr, incremented_value);
 
             set_zero(cpu, incremented_value == 0);
@@ -310,23 +286,7 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
             cpu.pc = addr
         }
         JSR => {
-            let addr = addr.expect("JSR requires a address operand");
-
-            cpu.cycles += 1;
-            cpu.write_byte(
-                bus,
-                0x0100 + cpu.sp as u16,
-                (cpu.pc.wrapping_sub(1) >> 8) as u8,
-            );
-            cpu.sp = cpu.sp.wrapping_sub(1);
-            cpu.write_byte(
-                bus,
-                0x0100 + cpu.sp as u16,
-                (cpu.pc.wrapping_sub(1) & 0xFF) as u8,
-            );
-            cpu.sp = cpu.sp.wrapping_sub(1);
-
-            cpu.pc = addr
+            // Handleld In addressing
         }
         LDA => {
             let value = cpu.read_byte(bus, addr.expect("LDA requires an address operand"));
@@ -355,7 +315,7 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
         LSR => {
             let mut value = match accumulator {
                 Some(accumulator) => accumulator,
-                None => cpu.read_byte(bus, addr.expect("LSR requires an address operand")),
+                None => cpu.opcode_state.latch,
             };
 
             set_carry(cpu, value & 0x01 != 0);
@@ -380,29 +340,23 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
             set_negative(cpu, (cpu.a & 0x80) != 0);
         }
         PHA => {
-            cpu.cycles += 1;
-            cpu.write_byte(bus, 0x0100 + cpu.sp as u16, cpu.a);
+            cpu.write_byte(bus, 0x0100u16.wrapping_add(cpu.sp as u16), cpu.a);
             cpu.sp = cpu.sp.wrapping_sub(1);
         }
         PHP => {
-            cpu.cycles += 1;
-            cpu.write_byte(bus, 0x0100 + cpu.sp as u16, set_break(cpu.p));
+            cpu.write_byte(bus, 0x0100u16.wrapping_add(cpu.sp as u16), set_break(cpu.p));
             cpu.sp = cpu.sp.wrapping_sub(1);
         }
         PLA => {
-            cpu.cycles += 2;
-            cpu.sp = cpu.sp.wrapping_add(1);
-            cpu.a = cpu.read_byte(bus, 0x0100 + cpu.sp as u16);
+            cpu.a = cpu.read_byte(bus, 0x0100u16.wrapping_add(cpu.sp as u16));
         }
         PLP => {
-            cpu.cycles += 2;
-            cpu.sp = cpu.sp.wrapping_add(1);
-            cpu.p = cpu.read_byte(bus, 0x0100 + cpu.sp as u16) & !0x10;
+            cpu.p = cpu.read_byte(bus, 0x0100u16.wrapping_add(cpu.sp as u16)) & !0x10;
         }
         ROL => {
             let mut value = match accumulator {
                 Some(accumulator) => accumulator,
-                None => cpu.read_byte(bus, addr.expect("ROL requires an address operand")),
+                None => cpu.opcode_state.latch,
             };
             let old_carry = get_carry(cpu) as u8;
 
@@ -421,7 +375,7 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
         ROR => {
             let mut value = match accumulator {
                 Some(accumulator) => accumulator,
-                None => cpu.read_byte(bus, addr.expect("ROR requires an address operand")),
+                None => cpu.opcode_state.latch,
             };
             let old_carry = get_carry(cpu) as u8;
 
@@ -438,25 +392,10 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
             set_negative(cpu, (value & 0x80) != 0);
         }
         RTI => {
-            cpu.cycles += 2;
-
-            cpu.sp = cpu.sp.wrapping_add(1);
-            cpu.p = cpu.read_byte(bus, 0x0100 + cpu.sp as u16) & !0x10;
-            cpu.sp = cpu.sp.wrapping_add(1);
-            let pcl = cpu.read_byte(bus, 0x0100 + cpu.sp as u16);
-            cpu.sp = cpu.sp.wrapping_add(1);
-            let pch = cpu.read_byte(bus, 0x0100 + cpu.sp as u16);
-            cpu.pc = u16::from_le_bytes([pcl, pch]);
+            // Handleld In addressing
         }
         RTS => {
-            cpu.cycles += 2;
-
-            cpu.sp = cpu.sp.wrapping_add(1);
-            let pcl = cpu.read_byte(bus, 0x0100 + cpu.sp as u16);
-            cpu.sp = cpu.sp.wrapping_add(1);
-            let pch = cpu.read_byte(bus, 0x0100 + cpu.sp as u16);
-            cpu.cycles += 1;
-            cpu.pc = u16::from_le_bytes([pcl, pch]) + 1;
+            // Handleld In addressing
         }
         SBC => {
             let value = cpu.read_byte(bus, addr.expect("SBC requires an adress operand"));
@@ -474,15 +413,12 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
             set_negative(cpu, (cpu.a & 0x80) != 0);
         }
         SEC => {
-            cpu.cycles += 1;
             set_carry(cpu, true);
         }
         SED => {
-            cpu.cycles += 1;
             set_decimal(cpu, true);
         }
         SEI => {
-            cpu.cycles += 1;
             set_interrupt_disable(cpu, true);
         }
         STA => {
@@ -495,45 +431,33 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
             cpu.write_byte(bus, addr.expect("STY requires an address operand"), cpu.y);
         }
         TAX => {
-            cpu.cycles += 1;
-
             cpu.x = cpu.a;
 
             set_zero(cpu, cpu.x == 0);
             set_negative(cpu, ((cpu.x >> 7) & 0x01) != 0);
         }
         TAY => {
-            cpu.cycles += 1;
-
             cpu.y = cpu.a;
 
             set_zero(cpu, cpu.y == 0);
             set_negative(cpu, ((cpu.y >> 7) & 0x01) != 0);
         }
         TSX => {
-            cpu.cycles += 1;
-
             cpu.x = cpu.sp;
 
             set_zero(cpu, cpu.x == 0);
             set_negative(cpu, ((cpu.x >> 7) & 0x01) != 0);
         }
         TXA => {
-            cpu.cycles += 1;
-
             cpu.a = cpu.x;
 
             set_zero(cpu, cpu.a == 0);
             set_negative(cpu, ((cpu.a >> 7) & 0x01) != 0);
         }
         TXS => {
-            cpu.cycles += 1;
-
             cpu.sp = cpu.x;
         }
         TYA => {
-            cpu.cycles += 1;
-
             cpu.a = cpu.y;
 
             set_zero(cpu, cpu.a == 0);

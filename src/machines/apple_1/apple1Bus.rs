@@ -45,7 +45,7 @@ impl Bus for Apple1Bus {
     fn write(&mut self, addr: u16, byte: u8) {
         match addr {
             //RAM (8K system per wikipedia)
-            0x0000..=0x0FFF | 0xE000..=0xEFFF => self.memory[addr as usize] = byte,
+            0x0000..=0x0FFF => self.memory[addr as usize] = byte,
             // ACI write
             0xC028 => todo!("Maybe implement cassette write idk"),
             // Peripheral Interface Adapter (KB and Display)
