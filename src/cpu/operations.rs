@@ -349,6 +349,8 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
         }
         PLA => {
             cpu.a = cpu.read_byte(bus, 0x0100u16.wrapping_add(cpu.sp as u16));
+            set_zero(cpu, cpu.a == 0);
+            set_negative(cpu, (cpu.a & 0x80) != 0);
         }
         PLP => {
             cpu.p = cpu.read_byte(bus, 0x0100u16.wrapping_add(cpu.sp as u16)) & !0x10;
@@ -405,12 +407,34 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
 
             let signed_overflow = (cpu.a ^ final_sub) & (cpu.a ^ value) & 0x80;
 
-            set_carry(cpu, !(overflow1 || overflow2));
-            cpu.a = final_sub;
-
             set_overflow(cpu, signed_overflow != 0);
             set_zero(cpu, cpu.a == 0);
             set_negative(cpu, (cpu.a & 0x80) != 0);
+
+            if get_decimal(cpu) {
+                let borrow = if get_carry(cpu) { 0 } else { 1 };
+
+                let mut low = (cpu.a & 0x0F) as i16 - (value & 0x0F) as i16 - borrow;
+
+                let mut high = (cpu.a >> 4) as i16 - (value >> 4) as i16;
+
+                if low < 0 {
+                    low -= 6;
+                    high -= 1;
+                }
+
+                let no_borrow = high >= 0;
+
+                if high < 0 {
+                    high -= 6;
+                }
+
+                set_carry(cpu, no_borrow);
+                cpu.a = (((high as u8) << 4) & 0xF0) | (low as u8 & 0x0F);
+            } else {
+                set_carry(cpu, !(overflow1 || overflow2));
+                cpu.a = final_sub;
+            }
         }
         SEC => {
             set_carry(cpu, true);

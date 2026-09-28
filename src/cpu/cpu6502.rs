@@ -1,3 +1,5 @@
+use std::io::Seek;
+
 use ratatui::style::Stylize;
 
 use crate::{
@@ -13,6 +15,7 @@ use crate::{
     },
 };
 
+#[derive(Debug)]
 pub struct OpcodeState {
     pub current_opcode: Instruction,
 

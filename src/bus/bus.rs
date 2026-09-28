@@ -2,6 +2,6 @@ pub trait Bus {
     fn read(&mut self, addr: u16) -> u8;
     fn write(&mut self, addr: u16, byte: u8);
 
-    fn console_write(&self, byte: u8);
-    fn console_read(&self) -> Option<u8>;
+    fn console_write(&mut self, byte: u8);
+    fn console_read(&mut self) -> Option<u8>;
 }

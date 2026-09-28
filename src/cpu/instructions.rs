@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub enum Operation {
     ADC,
     AND,
@@ -56,7 +57,7 @@ pub enum Operation {
     TXS,
     TYA,
 }
-
+#[derive(Debug)]
 pub enum Addressing {
     Accumulator,
     Immediate,
@@ -72,12 +73,12 @@ pub enum Addressing {
     IndirectIndexed,
     AbsoluteIndirect,
 }
-
+#[derive(Debug)]
 pub struct Instruction {
     pub operation: Operation,
     pub addressing: Addressing,
 }
-
+#[derive(Debug)]
 pub enum Operand {
     Accumulator,
     Address(u16),

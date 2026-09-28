@@ -15,7 +15,10 @@ use tui_term::{
     widget::PseudoTerminal,
 };
 
-use crate::machines::apple_1::apple1::{self, Apple1};
+use crate::{
+    bus::Bus,
+    machines::apple_1::apple1::{self, Apple1},
+};
 
 mod bus;
 mod cpu;
@@ -50,23 +53,58 @@ fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
 
         if event::poll(Duration::from_millis(16))? {
             if let Event::Key(key) = event::read()? {
-                match &state {
-                    AppState::Menu => match key.code {
-                        KeyCode::Esc => return Ok(()),
-                        KeyCode::Down => list_state.select_next(),
-                        KeyCode::Up => list_state.select_previous(),
-                        KeyCode::Enter => match list_state.selected().unwrap() {
-                            0 => state = AppState::Apple1(Apple1::new()),
+                if key.kind == event::KeyEventKind::Press {
+                    match &mut state {
+                        AppState::Menu => match key.code {
+                            KeyCode::Esc => return Ok(()),
+                            KeyCode::Down => list_state.select_next(),
+                            KeyCode::Up => list_state.select_previous(),
+                            KeyCode::Enter => match list_state.selected().unwrap() {
+                                0 => {
+                                    state = AppState::Apple1(Apple1::new());
+                                    last_tick = Instant::now();
+                                    parser = vt100::Parser::new(24, 80, 0);
+                                }
+                                _ => {}
+                            },
                             _ => {}
                         },
-                        _ => {}
-                    },
-                    AppState::Apple1(apple1) => match key.code {
-                        KeyCode::Esc => state = AppState::Menu,
-                        _ => {}
-                    },
+                        AppState::Apple1(apple1) => match key.code {
+                            KeyCode::Esc => state = AppState::Menu,
+                            KeyCode::Char('n') => {
+                                for _ in 0..50 {
+                                    apple1.cpu.cycle(&mut apple1.bus);
+                                }
+                            }
+                            KeyCode::Char(c) if c.is_ascii() => {
+                                apple1.bus.console_write(c.to_ascii_uppercase() as u8);
+                            }
+                            KeyCode::Enter => {
+                                apple1.bus.console_write(0x0D);
+                            }
+                            KeyCode::Backspace => {
+                                apple1.bus.console_write(0x5F);
+                            }
+                            _ => {}
+                        },
+                    }
                 }
             }
+        }
+        match &mut state {
+            AppState::Apple1(apple1) => {
+                apple1.consume_cycles(last_tick.elapsed());
+                last_tick = Instant::now();
+
+                while let Some(byte) = apple1.bus.console_read() {
+                    match byte {
+                        b'\r' => parser.process(b"\r\n"),
+                        0x5F => parser.process(b"\x08 \x08"),
+                        _ => parser.process(&[byte]),
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }

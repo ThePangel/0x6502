@@ -1,4 +1,4 @@
-use std::mem;
+use std::{collections::VecDeque, mem};
 
 use crate::bus::Bus;
 
@@ -8,6 +8,7 @@ const INTBASIC: &[u8] = include_bytes!("./roms/apple1basic.bin");
 
 pub struct Apple1Bus {
     pub memory: [u8; 65536],
+    pub output_buffer: VecDeque<u8>,
 }
 
 impl Apple1Bus {
@@ -18,7 +19,10 @@ impl Apple1Bus {
         memory[0xC100..=0xC1FF].copy_from_slice(WOZACI);
         memory[0xE000..=0xEFFF].copy_from_slice(INTBASIC);
 
-        Apple1Bus { memory }
+        Apple1Bus {
+            memory,
+            output_buffer: VecDeque::new(),
+        }
     }
 }
 
@@ -33,13 +37,15 @@ impl Bus for Apple1Bus {
             0xD010..=0xD013 => {
                 if addr == 0xD010 {
                     self.memory[0xD011] = 0;
-                };
+                } else if addr == 0xD012 {
+                    return 0x00;
+                }
 
                 self.memory[addr as usize]
             }
             // Wozmon PROM
             0xFF00..=0xFFFF => self.memory[addr as usize],
-            _ => todo!("temp wildcard"),
+            _ => self.memory[addr as usize],
         }
     }
     fn write(&mut self, addr: u16, byte: u8) {
@@ -51,19 +57,24 @@ impl Bus for Apple1Bus {
             // Peripheral Interface Adapter (KB and Display)
             0xD010..=0xD013 => {
                 if addr == 0xD012 {
-                    self.console_write(byte);
-                    self.memory[addr as usize] = byte | 0x80
+                    self.memory[addr as usize] = byte;
+                    self.output_buffer.push_back(byte & 0x7F);
                 } else if addr == 0xD010 {
-                    self.memory[addr as usize] = byte | 0x80
+                    self.memory[addr as usize] = byte | 0x80;
+                    self.memory[0xD011] = 0x80;
                 }
             }
-            _ => todo!("temp wildcard"),
+            _ => {}
         }
     }
-    fn console_read(&self) -> Option<u8> {
-        todo!()
+    fn console_read(&mut self) -> Option<u8> {
+        let byte = self.output_buffer.pop_front()?;
+
+        self.memory[0xD012] = 0;
+
+        Some(byte)
     }
-    fn console_write(&self, byte: u8) {
-        todo!()
+    fn console_write(&mut self, byte: u8) {
+        self.write(0xD010, byte);
     }
 }

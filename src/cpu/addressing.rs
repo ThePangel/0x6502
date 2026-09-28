@@ -5,7 +5,7 @@ use ratatui::run;
 use crate::{
     bus::Bus,
     cpu::{
-        cpu6502::Cpu6502,
+        cpu6502::{Cpu6502, OpcodeState},
         flags::{set_break, set_interrupt_disable},
         instructions::{
             Addressing,
@@ -32,55 +32,87 @@ pub fn resolve<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
             run_operation(cpu, bus);
             cpu.opcode_state.opcode_cycle = 0;
         }
-        Addressing::Absolute => match cpu.opcode_state.opcode_cycle {
-            1 => {
-                cpu.opcode_state.latch = cpu.read_byte(bus, cpu.pc);
-                cpu.pc = cpu.pc.wrapping_add(1);
-            }
-            2 => {
-                let adh = cpu.read_byte(bus, cpu.pc);
-                cpu.pc = cpu.pc.wrapping_add(1);
+        Addressing::Absolute => match cpu.opcode_state.current_opcode.operation {
+            JSR => match cpu.opcode_state.opcode_cycle {
+                1 => {
+                    cpu.opcode_state.latch = cpu.read_byte(bus, cpu.pc);
+                    cpu.pc = cpu.pc.wrapping_add(1);
+                }
+                2 => {
+                    cpu.read_byte(bus, 0x0100u16.wrapping_add(cpu.sp as u16));
+                }
+                3 => {
+                    cpu.write_byte(
+                        bus,
+                        0x0100u16.wrapping_add(cpu.sp as u16),
+                        (cpu.pc >> 8) as u8,
+                    );
+                    cpu.sp = cpu.sp.wrapping_sub(1);
+                }
+                4 => {
+                    cpu.write_byte(bus, 0x0100u16.wrapping_add(cpu.sp as u16), cpu.pc as u8);
+                    cpu.sp = cpu.sp.wrapping_sub(1);
+                }
+                5 => {
+                    let adl = cpu.opcode_state.latch;
 
-                cpu.opcode_state.operand =
-                    Operand::Address(u16::from_le_bytes([cpu.opcode_state.latch, adh]));
-            }
-            3 => {
-                if matches!(
-                    cpu.opcode_state.current_opcode.operation,
-                    ASL | LSR | ROL | ROR | INC | DEC
-                ) {
-                    let address = match cpu.opcode_state.operand {
-                        Address(address) => address,
-                        _ => panic!("expected address operand"),
-                    };
-                    cpu.opcode_state.latch = cpu.read_byte(bus, address);
-                } else {
-                    run_operation(cpu, bus);
+                    let adh = cpu.read_byte(bus, cpu.pc);
+
+                    cpu.pc = u16::from_le_bytes([adl, adh]);
                     cpu.opcode_state.opcode_cycle = 0;
                 }
-            }
-            4 => {
-                if matches!(
-                    cpu.opcode_state.current_opcode.operation,
-                    ASL | LSR | ROL | ROR | INC | DEC
-                ) {
-                    let address = match cpu.opcode_state.operand {
-                        Address(address) => address,
-                        _ => panic!("expected address operand"),
-                    };
-                    cpu.write_byte(bus, address, cpu.opcode_state.latch);
+                _ => {}
+            },
+            _ => match cpu.opcode_state.opcode_cycle {
+                1 => {
+                    cpu.opcode_state.latch = cpu.read_byte(bus, cpu.pc);
+                    cpu.pc = cpu.pc.wrapping_add(1);
                 }
-            }
-            5 => {
-                if matches!(
-                    cpu.opcode_state.current_opcode.operation,
-                    ASL | LSR | ROL | ROR | INC | DEC
-                ) {
-                    run_operation(cpu, bus);
-                    cpu.opcode_state.opcode_cycle = 0;
+                2 => {
+                    let adh = cpu.read_byte(bus, cpu.pc);
+                    cpu.pc = cpu.pc.wrapping_add(1);
+
+                    cpu.opcode_state.operand =
+                        Operand::Address(u16::from_le_bytes([cpu.opcode_state.latch, adh]));
                 }
-            }
-            _ => {}
+                3 => {
+                    if matches!(
+                        cpu.opcode_state.current_opcode.operation,
+                        ASL | LSR | ROL | ROR | INC | DEC
+                    ) {
+                        let address = match cpu.opcode_state.operand {
+                            Address(address) => address,
+                            _ => panic!("expected address operand"),
+                        };
+                        cpu.opcode_state.latch = cpu.read_byte(bus, address);
+                    } else {
+                        run_operation(cpu, bus);
+                        cpu.opcode_state.opcode_cycle = 0;
+                    }
+                }
+                4 => {
+                    if matches!(
+                        cpu.opcode_state.current_opcode.operation,
+                        ASL | LSR | ROL | ROR | INC | DEC
+                    ) {
+                        let address = match cpu.opcode_state.operand {
+                            Address(address) => address,
+                            _ => panic!("expected address operand"),
+                        };
+                        cpu.write_byte(bus, address, cpu.opcode_state.latch);
+                    }
+                }
+                5 => {
+                    if matches!(
+                        cpu.opcode_state.current_opcode.operation,
+                        ASL | LSR | ROL | ROR | INC | DEC
+                    ) {
+                        run_operation(cpu, bus);
+                        cpu.opcode_state.opcode_cycle = 0;
+                    }
+                }
+                _ => {}
+            },
         },
         Addressing::ZPage => match cpu.opcode_state.opcode_cycle {
             1 => {
@@ -371,7 +403,6 @@ pub fn resolve<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
                 4 => {
                     cpu.opcode_state.latch =
                         cpu.read_byte(bus, 0x100u16.wrapping_add(cpu.sp as u16));
-                    cpu.sp = cpu.sp.wrapping_add(1);
                 }
                 5 => {
                     let pcl = cpu.opcode_state.latch;
@@ -395,13 +426,13 @@ pub fn resolve<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
                 3 => {
                     cpu.opcode_state.latch =
                         cpu.read_byte(bus, 0x0100u16.wrapping_add(cpu.sp as u16));
+
                     cpu.sp = cpu.sp.wrapping_add(1);
                 }
                 4 => {
                     let pcl = cpu.opcode_state.latch;
 
                     let pch = cpu.read_byte(bus, 0x100u16.wrapping_add(cpu.sp as u16));
-                    cpu.sp = cpu.sp.wrapping_add(1);
 
                     cpu.pc = u16::from_le_bytes([pcl, pch])
                 }
@@ -412,36 +443,7 @@ pub fn resolve<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
                 }
                 _ => {}
             },
-            JSR => match cpu.opcode_state.opcode_cycle {
-                1 => {
-                    cpu.opcode_state.latch = cpu.read_byte(bus, cpu.pc);
-                    cpu.pc = cpu.pc.wrapping_add(1);
-                }
-                2 => {
-                    cpu.read_byte(bus, 0x0100u16.wrapping_add(cpu.sp as u16));
-                }
-                3 => {
-                    cpu.write_byte(
-                        bus,
-                        0x0100u16.wrapping_add(cpu.sp as u16),
-                        (cpu.pc >> 8) as u8,
-                    );
-                    cpu.sp = cpu.sp.wrapping_sub(1);
-                }
-                4 => {
-                    cpu.write_byte(bus, 0x0100u16.wrapping_add(cpu.sp as u16), cpu.pc as u8);
-                    cpu.sp = cpu.sp.wrapping_sub(1);
-                }
-                5 => {
-                    let adl = cpu.opcode_state.latch;
 
-                    let adh = cpu.read_byte(bus, cpu.pc);
-
-                    cpu.pc = u16::from_le_bytes([adl, adh]);
-                    cpu.opcode_state.opcode_cycle = 0;
-                }
-                _ => {}
-            },
             PHA | PHP => match cpu.opcode_state.opcode_cycle {
                 1 => {
                     cpu.read_byte(bus, cpu.pc);
@@ -469,6 +471,7 @@ pub fn resolve<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
             },
             _ => {
                 cpu.opcode_state.operand = Operand::Implied;
+                cpu.read_byte(bus, cpu.pc);
                 run_operation(cpu, bus);
                 cpu.opcode_state.opcode_cycle = 0;
             }
