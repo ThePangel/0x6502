@@ -1,9 +1,9 @@
 use crossterm::event::{self, Event, KeyCode, KeyEvent};
 use ratatui::{
     DefaultTerminal, Frame,
-    layout::{Constraint, Layout},
-    style::{Color, Modifier, Style},
-    text::Text,
+    layout::{Constraint, Layout, Rect},
+    style::{Color, Style},
+    text::{Line, Span, Text},
     widgets::{Block, BorderType, List, ListState, Paragraph},
 };
 use std::{
@@ -17,6 +17,7 @@ use tui_term::{
 
 use crate::{
     bus::Bus,
+    cpu::cpu6502::Cpu6502,
     machines::apple_1::apple1::{self, Apple1},
 };
 
@@ -47,7 +48,7 @@ fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
                 terminal.draw(|frame| render_menu(frame, &mut list_state))?;
             }
             AppState::Apple1(apple1) => {
-                terminal.draw(|frame| render_machine(frame, &parser))?;
+                terminal.draw(|frame| render_machine(frame, &parser, &apple1.cpu, &apple1.bus))?;
             }
         }
 
@@ -71,11 +72,11 @@ fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
                         },
                         AppState::Apple1(apple1) => match key.code {
                             KeyCode::Esc => state = AppState::Menu,
-                            KeyCode::Char('n') => {
+                            /*KeyCode::Char('n') => {
                                 for _ in 0..50 {
                                     apple1.cpu.cycle(&mut apple1.bus);
                                 }
-                            }
+                            }*/
                             KeyCode::Char(c) if c.is_ascii() => {
                                 apple1.bus.console_write(c.to_ascii_uppercase() as u8);
                             }
@@ -146,7 +147,7 @@ fn render_menu(frame: &mut Frame, list_state: &mut ListState) {
     frame.render_stateful_widget(list, bottom, list_state);
 }
 
-fn render_machine(frame: &mut Frame, parser: &Parser) {
+fn render_machine<B: Bus>(frame: &mut Frame, parser: &Parser, cpu: &Cpu6502, bus: &B) {
     let horizontal = Layout::horizontal([
         Constraint::Percentage(20),
         Constraint::Percentage(60),
@@ -154,18 +155,14 @@ fn render_machine(frame: &mut Frame, parser: &Parser) {
     ])
     .spacing(1);
     let [left, middle, right] = frame.area().layout(&horizontal);
-    let vertical = Layout::vertical([Constraint::Percentage(40), Constraint::Fill(1)]).spacing(1);
+    let vertical = Layout::vertical([Constraint::Percentage(15), Constraint::Fill(1)]).spacing(1);
     let vertical_rev =
         Layout::vertical([Constraint::Fill(1), Constraint::Percentage(40)]).spacing(1);
     let [top_l, bottom_l] = left.layout(&vertical);
     let [top_r, bottom_r] = right.layout(&vertical_rev);
 
-    frame.render_widget(
-        Block::bordered()
-            .border_type(BorderType::Rounded)
-            .title("Registers"),
-        top_l,
-    );
+    render_registers(frame, top_l, cpu);
+
     frame.render_widget(
         Block::bordered()
             .border_type(BorderType::Rounded)
@@ -192,4 +189,47 @@ fn render_machine(frame: &mut Frame, parser: &Parser) {
     );
 
     frame.render_widget(pseudo_term, middle);
+}
+
+fn render_registers(frame: &mut Frame, area: Rect, cpu: &Cpu6502) {
+    let f_states = |bit: u8, ch: char| {
+        let color = if cpu.p & bit != 0 {
+            Color::LightGreen
+        } else {
+            Color::DarkGray
+        };
+
+        Span::styled(ch.to_string(), Style::default().fg(color))
+    };
+    let line_1 = Line::from(format!("A:{:02X} Y:{:02X} X:{:02X}", cpu.a, cpu.y, cpu.x,));
+
+    let line_2 = Line::from(format!("PC:{:04X} SP:{:02X}", cpu.pc, cpu.sp,));
+
+    let flags = Line::from(vec![
+        Span::raw(format!("P:{:02X} Flags: [", cpu.p)),
+        f_states(0x80, 'N'),
+        f_states(0x40, 'V'),
+        Span::styled("-", Style::default().fg(Color::DarkGray)),
+        f_states(0x10, 'B'),
+        f_states(0x08, 'D'),
+        f_states(0x04, 'I'),
+        f_states(0x02, 'Z'),
+        f_states(0x01, 'C'),
+        Span::raw("]")
+    ]);
+
+    let cycle_state = Line::from(format!(
+        "Cycles: {:?}  Opcode cycles: {:?}", cpu.cycles, cpu.opcode_state.opcode_cycle
+    ));
+
+    let opcode_state = Line::from(format!("OPCode: {:?} Addressing mode: {:?}", cpu.opcode_state.current_opcode.operation, cpu.opcode_state.current_opcode.addressing,));
+
+    frame.render_widget(
+        Paragraph::new(vec![line_1, line_2, flags, cycle_state, opcode_state]).block(
+            Block::bordered()
+                .border_type(BorderType::Rounded)
+                .title("CPU STATE"),
+        ),
+        area,
+    );
 }
