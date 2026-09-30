@@ -77,6 +77,16 @@ impl Cpu6502 {
         }
     }
     pub fn reset<B: Bus>(&mut self, bus: &mut B) {
+        *self = Self {
+            a: 0,
+            y: 0,
+            x: 0,
+            pc: 0,
+            sp: 0xFF,
+            p: 0,
+            cycles: 0,
+            opcode_state: OpcodeState::new(),
+        };
         let pcl = self.read_byte(bus, 0xFFFC);
         let pch = self.read_byte(bus, 0xFFFD);
 

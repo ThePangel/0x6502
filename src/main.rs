@@ -1,4 +1,4 @@
-use crossterm::event::{self, Event, KeyCode, KeyEvent};
+use crossterm::event::{self, Event, KeyCode};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout, Rect},
@@ -41,6 +41,7 @@ fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
     let mut parser = vt100::Parser::new(24, 80, 0);
     let mut list_state = ListState::default().with_selected(Some(0));
     let mut state = AppState::Menu;
+    let mut paused = false;
 
     loop {
         match &mut state {
@@ -48,7 +49,9 @@ fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
                 terminal.draw(|frame| render_menu(frame, &mut list_state))?;
             }
             AppState::Apple1(apple1) => {
-                terminal.draw(|frame| render_machine(frame, &parser, &apple1.cpu, &apple1.bus))?;
+                terminal.draw(|frame| {
+                    render_machine(frame, &parser, &apple1.cpu, &apple1.bus, "APPLE I", paused)
+                })?;
             }
         }
 
@@ -72,11 +75,9 @@ fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
                         },
                         AppState::Apple1(apple1) => match key.code {
                             KeyCode::Esc => state = AppState::Menu,
-                            /*KeyCode::Char('n') => {
-                                for _ in 0..50 {
-                                    apple1.cpu.cycle(&mut apple1.bus);
-                                }
-                            }*/
+                            KeyCode::F(1) => paused = !paused,
+                            KeyCode::F(2) => apple1.cpu.cycle(&mut apple1.bus),
+                            KeyCode::F(5) => apple1.reset(),
                             KeyCode::Char(c) if c.is_ascii() => {
                                 apple1.bus.console_write(c.to_ascii_uppercase() as u8);
                             }
@@ -94,9 +95,10 @@ fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
         }
         match &mut state {
             AppState::Apple1(apple1) => {
-                apple1.consume_cycles(last_tick.elapsed());
+                if !paused {
+                    apple1.consume_cycles(last_tick.elapsed());
+                }
                 last_tick = Instant::now();
-
                 while let Some(byte) = apple1.bus.console_read() {
                     match byte {
                         b'\r' => parser.process(b"\r\n"),
@@ -147,14 +149,61 @@ fn render_menu(frame: &mut Frame, list_state: &mut ListState) {
     frame.render_stateful_widget(list, bottom, list_state);
 }
 
-fn render_machine<B: Bus>(frame: &mut Frame, parser: &Parser, cpu: &Cpu6502, bus: &B) {
+fn render_machine<B: Bus>(
+    frame: &mut Frame,
+    parser: &Parser,
+    cpu: &Cpu6502,
+    bus: &B,
+    machine_name: &str,
+    paused: bool,
+) {
+    let root_layout = Layout::vertical([Constraint::Length(1), Constraint::Length(1), Constraint::Fill(1)]);
+    let [header_area, _, main_area] = frame.area().layout(&root_layout);
+
+    let header_layout = Layout::horizontal([
+        Constraint::Fill(1),
+        Constraint::Length(machine_name.len() as u16 + 16),
+    ]);
+    let [head_l, head_r] = header_area.layout(&header_layout);
+
+    let keybinds = Line::from(vec![
+        Span::raw(" "),
+        Span::styled(" F1 ", Style::default().bg(Color::Cyan).fg(Color::Black)),
+        Span::raw(" Play/Pause  "),
+        Span::styled(" F2 ", Style::default().bg(Color::Cyan).fg(Color::Black)),
+        Span::raw(" Step  "),
+        Span::styled(" F5 ", Style::default().bg(Color::Cyan).fg(Color::Black)),
+        Span::raw(" Reset  "),
+        Span::styled(" ESC ", Style::default().bg(Color::Red).fg(Color::White)),
+        Span::raw(" Quit "),
+    ]);
+    frame.render_widget(Paragraph::new(keybinds), head_l);
+
+    let (state, color) = if !paused {
+        (" > RUNNING ", Color::LightGreen)
+    } else {
+        (" || PAUSED ", Color::Red)
+    };
+
+    let machine = Line::from(vec![
+        Span::styled(machine_name, Style::new().fg(Color::Green).bold()),
+        Span::raw("  "),
+        Span::styled(
+            state,
+            Style::new().fg(Color::Rgb(20, 22, 30)).bg(color).bold(),
+        ),
+        Span::raw(" "),
+    ])
+    .left_aligned();
+    frame.render_widget(Paragraph::new(machine), head_r);
+
     let horizontal = Layout::horizontal([
-        Constraint::Percentage(20),
-        Constraint::Percentage(60),
-        Constraint::Percentage(20),
+        Constraint::Percentage(21),
+        Constraint::Percentage(58),
+        Constraint::Percentage(21),
     ])
     .spacing(1);
-    let [left, middle, right] = frame.area().layout(&horizontal);
+    let [left, middle, right] = main_area.layout(&horizontal);
     let vertical = Layout::vertical([Constraint::Percentage(15), Constraint::Fill(1)]).spacing(1);
     let vertical_rev =
         Layout::vertical([Constraint::Fill(1), Constraint::Percentage(40)]).spacing(1);
@@ -215,14 +264,18 @@ fn render_registers(frame: &mut Frame, area: Rect, cpu: &Cpu6502) {
         f_states(0x04, 'I'),
         f_states(0x02, 'Z'),
         f_states(0x01, 'C'),
-        Span::raw("]")
+        Span::raw("]"),
     ]);
 
     let cycle_state = Line::from(format!(
-        "Cycles: {:?}  Opcode cycles: {:?}", cpu.cycles, cpu.opcode_state.opcode_cycle
+        "Cycles: {:?}  OP cycles: {:?}",
+        cpu.cycles, cpu.opcode_state.opcode_cycle
     ));
 
-    let opcode_state = Line::from(format!("OPCode: {:?} Addressing mode: {:?}", cpu.opcode_state.current_opcode.operation, cpu.opcode_state.current_opcode.addressing,));
+    let opcode_state = Line::from(format!(
+        "OPCode: {:?} Addressing: {:?}",
+        cpu.opcode_state.current_opcode.operation, cpu.opcode_state.current_opcode.addressing,
+    ));
 
     frame.render_widget(
         Paragraph::new(vec![line_1, line_2, flags, cycle_state, opcode_state]).block(
