@@ -4,7 +4,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, List, ListState, Paragraph},
+    widgets::{Block, BorderType, Gauge, List, ListState, Paragraph, Row, Table},
 };
 use std::{
     io,
@@ -50,7 +50,14 @@ fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
             }
             AppState::Apple1(apple1) => {
                 terminal.draw(|frame| {
-                    render_machine(frame, &parser, &apple1.cpu, &apple1.bus, "APPLE I", paused)
+                    render_machine(
+                        frame,
+                        &parser,
+                        &apple1.cpu,
+                        &mut apple1.bus,
+                        "APPLE I",
+                        paused,
+                    )
                 })?;
             }
         }
@@ -77,7 +84,10 @@ fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
                             KeyCode::Esc => state = AppState::Menu,
                             KeyCode::F(1) => paused = !paused,
                             KeyCode::F(2) => apple1.cpu.cycle(&mut apple1.bus),
-                            KeyCode::F(5) => apple1.reset(),
+                            KeyCode::F(5) => {
+                                apple1.reset();
+                                parser = vt100::Parser::new(24, 80, 0);
+                            }
                             KeyCode::Char(c) if c.is_ascii() => {
                                 apple1.bus.console_write(c.to_ascii_uppercase() as u8);
                             }
@@ -153,11 +163,15 @@ fn render_machine<B: Bus>(
     frame: &mut Frame,
     parser: &Parser,
     cpu: &Cpu6502,
-    bus: &B,
+    bus: &mut B,
     machine_name: &str,
     paused: bool,
 ) {
-    let root_layout = Layout::vertical([Constraint::Length(1), Constraint::Length(1), Constraint::Fill(1)]);
+    let root_layout = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Fill(1),
+    ]);
     let [header_area, _, main_area] = frame.area().layout(&root_layout);
 
     let header_layout = Layout::horizontal([
@@ -211,6 +225,8 @@ fn render_machine<B: Bus>(
     let [top_r, bottom_r] = right.layout(&vertical_rev);
 
     render_registers(frame, top_l, cpu);
+
+    render_stack(frame, top_r, cpu, bus);
 
     frame.render_widget(
         Block::bordered()
@@ -273,7 +289,7 @@ fn render_registers(frame: &mut Frame, area: Rect, cpu: &Cpu6502) {
     ));
 
     let opcode_state = Line::from(format!(
-        "OPCode: {:?} Addressing: {:?}",
+        "OP: {:?} Addressing: {:?}",
         cpu.opcode_state.current_opcode.operation, cpu.opcode_state.current_opcode.addressing,
     ));
 
@@ -285,4 +301,101 @@ fn render_registers(frame: &mut Frame, area: Rect, cpu: &Cpu6502) {
         ),
         area,
     );
+}
+
+fn render_stack<B: Bus>(frame: &mut Frame, area: Rect, cpu: &Cpu6502, bus: &mut B) {
+    let block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .title(" Stack ");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let vertical = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Fill(1),
+    ]);
+    let [info, gauge, body] = inner.layout(&vertical);
+
+    let widths = [
+        Constraint::Length(6),
+        Constraint::Length(4),
+        Constraint::Fill(1),
+    ];
+
+    let accent = Style::new().fg(Color::Yellow).bold();
+    let dim = Style::new().fg(Color::DarkGray);
+
+    let depth = 0xFFu8.wrapping_sub(cpu.sp) as u16;
+    let pct = depth * 100 / 255;
+    let sp_addr = 0x0100u16 | cpu.sp as u16;
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::raw("SP "),
+            Span::styled(format!("{sp_addr:04X}"), accent),
+            Span::styled(format!("   depth {depth}/255"), dim),
+        ])),
+        info,
+    );
+
+    frame.render_widget(
+        Gauge::default()
+            .gauge_style(Style::new().fg(Color::Green).bg(Color::DarkGray))
+            .percent(pct),
+        gauge,
+    );
+
+    let header = Row::new(["ADDR", "DATA"]).style(Style::new().fg(Color::Cyan).bold());
+
+    let mut rows: Vec<Row> = vec![
+        Row::new([
+            format!("▶ {sp_addr:04X}"),
+            String::new(),
+            "next free".to_string(),
+        ])
+        .style(accent),
+    ];
+
+    for i in 1..=depth {
+        let addr = sp_addr + i;
+        let style = if i == 1 {
+            accent
+        } else {
+            Style::new().fg(Color::White)
+        };
+
+        rows.push(
+            Row::new([format!("{addr:04X}"), format!("{:02X}", bus.read(addr))]).style(style),
+        );
+    }
+
+    rows.push(Row::new(["stale"]).style(accent));
+
+    let used = 3 + depth as usize;
+    let budget = (body.height as usize).saturating_sub(used + 1);
+    let mut shown = 0;
+
+    for i in 1..=budget {
+        let addr = sp_addr - i as u16;
+        if addr < 0x0100 {
+            break;
+        }
+
+        rows.push(
+            Row::new([
+                format!("{addr:04X}"),
+                format!("{:02X}", bus.read(addr)),
+                String::new(),
+            ])
+            .style(dim),
+        );
+        shown += 1;
+    }
+
+    if (sp_addr - 0x0100) as usize > shown {
+        rows.push(Row::new(["  ⋮"]).style(dim));
+    }
+
+    frame.render_widget(Table::new(rows, widths).header(header), body);
 }

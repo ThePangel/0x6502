@@ -157,7 +157,7 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
             }
         }
         BRK => {
-            // Handleld In addressing
+            // Handled In addressing
         }
         BVC => {
             let addr = addr.expect("BVC requires a address operand");
@@ -286,7 +286,7 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
             cpu.pc = addr
         }
         JSR => {
-            // Handleld In addressing
+            // Handled In addressing
         }
         LDA => {
             let value = cpu.read_byte(bus, addr.expect("LDA requires an address operand"));
@@ -394,10 +394,10 @@ pub fn run_operation<B: Bus>(cpu: &mut Cpu6502, bus: &mut B) {
             set_negative(cpu, (value & 0x80) != 0);
         }
         RTI => {
-            // Handleld In addressing
+            // Handled In addressing
         }
         RTS => {
-            // Handleld In addressing
+            // Handled In addressing
         }
         SBC => {
             let value = cpu.read_byte(bus, addr.expect("SBC requires an adress operand"));
