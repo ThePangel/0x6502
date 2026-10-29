@@ -17,7 +17,10 @@ use tui_term::{
 
 use crate::{
     bus::Bus,
-    cpu::cpu6502::Cpu6502,
+    cpu::{
+        cpu6502::Cpu6502,
+        instructions::{Instruction, get_instruction, operand_len},
+    },
     machines::apple_1::apple1::{self, Apple1},
 };
 
@@ -213,8 +216,8 @@ fn render_machine<B: Bus>(
 
     let horizontal = Layout::horizontal([
         Constraint::Percentage(21),
-        Constraint::Percentage(58),
-        Constraint::Percentage(21),
+        Constraint::Fill(1),
+        Constraint::Percentage(18),
     ])
     .spacing(1);
     let [left, middle, right] = main_area.layout(&horizontal);
@@ -231,21 +234,12 @@ fn render_machine<B: Bus>(
     frame.render_widget(
         Block::bordered()
             .border_type(BorderType::Rounded)
-            .title("Stack"),
-        top_r,
-    );
-    frame.render_widget(
-        Block::bordered()
-            .border_type(BorderType::Rounded)
             .title("Memory"),
         bottom_l,
     );
-    frame.render_widget(
-        Block::bordered()
-            .border_type(BorderType::Rounded)
-            .title("Instructions"),
-        bottom_r,
-    );
+
+    render_instructions(frame, bottom_r, cpu, bus);
+   
     let screen = parser.screen();
     let pseudo_term = PseudoTerminal::new(screen).block(
         Block::bordered()
@@ -398,4 +392,68 @@ fn render_stack<B: Bus>(frame: &mut Frame, area: Rect, cpu: &Cpu6502, bus: &mut 
     }
 
     frame.render_widget(Table::new(rows, widths).header(header), body);
+}
+
+fn render_instructions<B: Bus>(frame: &mut Frame, area: Rect, cpu: &Cpu6502, bus: &mut B) {
+    let block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .title(" Instructions ");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let vertical = Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]);
+    let [pc, body] = inner.layout(&vertical);
+
+    let widths = [
+        Constraint::Length(6),
+        Constraint::Length(8),
+        Constraint::Fill(1),
+    ];
+
+    let accent = Style::new().fg(Color::Yellow).bold();
+    let dim = Style::new().fg(Color::DarkGray);
+    let current_len = operand_len(&cpu.opcode_state.current_opcode.addressing);
+    let mut previous_len = current_len;
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::raw("PC "),
+            Span::styled(format!("{0:04X}", cpu.pc), accent),
+        ])),
+        pc,
+    );
+
+    let mut rows: Vec<Row> = vec![
+        Row::new([
+            format!("▶ {0:04X}", cpu.pc),
+            (cpu.pc..cpu.pc.wrapping_add(current_len as u16))
+                .map(|addr| format!("{:02X}", bus.read(addr)))
+                .collect::<Vec<String>>()
+                .join(" "),
+            format!("{:?} {}", cpu.opcode_state.current_opcode.operation, cpu.opcode_state.current_opcode.addressing.short_name()),
+        ])
+        .style(accent),
+    ];
+
+    for _i in 0..body.height as usize {
+        let temp_pc = cpu.pc.wrapping_add(previous_len as u16);
+        let next_instruction = get_instruction(bus.read(temp_pc));
+
+        let row = Row::new([
+            format!("{0:04X}", cpu.pc.wrapping_add(previous_len as u16)),
+            (cpu.pc.wrapping_add(previous_len as u16)
+                ..temp_pc.wrapping_add(operand_len(&next_instruction.addressing) as u16))
+                .map(|addr| format!("{:02X}", bus.read(addr)))
+                .collect::<Vec<String>>()
+                .join(" "),
+            format!("{:?} {}", next_instruction.operation, next_instruction.addressing.short_name()),
+        ])
+        .style(dim);
+
+        previous_len += operand_len(&next_instruction.addressing);
+
+        rows.push(row);
+    }
+
+    frame.render_widget(Table::new(rows, widths), body);
 }

@@ -73,6 +73,26 @@ pub enum Addressing {
     IndirectIndexed,
     AbsoluteIndirect,
 }
+
+impl Addressing {
+    pub const fn short_name(&self) -> &'static str {
+        match self {
+            Addressing::Accumulator => "Accum",
+            Addressing::Immediate => "Imm",
+            Addressing::Absolute => "Abs",
+            Addressing::ZPage => "ZPage",
+            Addressing::IndexedZPageX => "ZP,X",
+            Addressing::IndexedZPageY => "ZP,Y",
+            Addressing::IndexedAbsoluteX => "Abs,X",
+            Addressing::IndexedAbsoluteY => "Abs,Y",
+            Addressing::Implied => "Impl",
+            Addressing::Relative => "Rel",
+            Addressing::IndexedIndirect => "(ZP,X)",
+            Addressing::IndirectIndexed => "(ZP),Y",
+            Addressing::AbsoluteIndirect => "(Abs)",
+        }
+    }
+}
 #[derive(Debug)]
 pub struct Instruction {
     pub operation: Operation,
@@ -83,6 +103,23 @@ pub enum Operand {
     Accumulator,
     Address(u16),
     Implied,
+}
+
+pub fn operand_len(addressing: &Addressing) -> u8 {
+    match addressing {
+        Addressing::Implied | Addressing::Accumulator => 1,
+        Addressing::Immediate
+        | Addressing::ZPage
+        | Addressing::IndexedZPageX
+        | Addressing::IndexedZPageY
+        | Addressing::IndexedIndirect
+        | Addressing::IndirectIndexed
+        | Addressing::Relative => 2,
+        Addressing::Absolute
+        | Addressing::IndexedAbsoluteX
+        | Addressing::IndexedAbsoluteY
+        | Addressing::AbsoluteIndirect => 3,
+    }
 }
 
 pub fn get_instruction(opcode: u8) -> Instruction {
