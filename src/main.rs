@@ -198,7 +198,7 @@ fn render_menu(frame: &mut Frame, list_state: &mut ListState) {
 
     let title_paragraph = Paragraph::new(title).style(Style::default().fg(Color::Green).bold());
 
-    let welcome = Paragraph::new("Welcome to 0x6502\n Please choose a system:")
+    let welcome = Paragraph::new("Welcome to 0x6502 by ThePangel\n Please choose a system:")
         .style(Style::default().fg(Color::Red).bold())
         .centered();
     frame.render_widget(title_paragraph, top);
