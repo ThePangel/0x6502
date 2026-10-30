@@ -9,7 +9,6 @@ repository = "https://github.com/ThePangel/0x6502"
 homepage = "https://github.com/ThePangel/0x6502"
 readme = "README.md"
 keywords = [ "6502", "emulation", "applei" ]
-categories = ["emulation", "simulation"]
 exclude = [ "target/" , ".git/" , ".gitignore", "*.log"]
 
 [[bin]]
