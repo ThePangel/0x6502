@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, mem};
+use std::collections::VecDeque;
 
 use crate::bus::Bus;
 

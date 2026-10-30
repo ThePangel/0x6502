@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::{app, cpu::cpu6502::Cpu6502, machines::apple_1::apple1Bus::Apple1Bus};
+use crate::{cpu::cpu6502::Cpu6502, machines::apple_1::apple1_bus::Apple1Bus};
 
 pub struct Apple1 {
     pub cpu: Cpu6502,

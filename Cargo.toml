@@ -2,6 +2,19 @@
 name = "x6502"
 version = "0.1.0"
 edition = "2024"
+authors = [ "ThePangel" ]
+description = "A 6502 retro computer lab"
+license = "GPL-3.0"
+repository = "https://github.com/ThePangel/0x6502"
+homepage = "https://github.com/ThePangel/0x6502"
+readme = "README.md"
+keywords = [ "6502", "emulation", "applei" ]
+categories = ["emulation", "simulation"]
+exclude = [ "target/" , ".git/" , ".gitignore", "*.log"]
+
+[[bin]]
+name = "x6502"
+path = "src/main.rs"
 
 [dependencies]
 crossterm = "0.29.0"

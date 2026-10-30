@@ -1,4 +1,5 @@
 #[derive(Debug)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum Operation {
     ADC,
     AND,

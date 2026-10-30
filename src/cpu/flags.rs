@@ -60,6 +60,7 @@ pub fn get_zero(cpu: &Cpu6502) -> bool {
     (cpu.p & 0x02) != 0
 }
 
+#[allow(dead_code)]
 pub fn get_interrupt_disable(cpu: &Cpu6502) -> bool {
     (cpu.p & 0x04) != 0
 }

@@ -1,6 +1,6 @@
 use crossterm::event::{
     self, Event,
-    KeyCode::{self, Tab},
+    KeyCode::{self},
 };
 use ratatui::{
     DefaultTerminal, Frame,
@@ -8,8 +8,8 @@ use ratatui::{
     style::{Color, Style},
     text::{Line, Span, Text},
     widgets::{
-        Block, BorderType, Clear, Gauge, List, ListState, Paragraph, Row, Scrollbar,
-        ScrollbarOrientation, ScrollbarState, Table,
+        Block, BorderType, Gauge, List, ListState, Paragraph, Row, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Table,
     },
 };
 use std::{
@@ -25,9 +25,9 @@ use crate::{
     bus::Bus,
     cpu::{
         cpu6502::Cpu6502,
-        instructions::{Instruction, get_instruction, operand_len},
+        instructions::{get_instruction, operand_len},
     },
-    machines::apple_1::apple1::{self, Apple1},
+    machines::apple_1::apple1::Apple1,
 };
 
 mod bus;
@@ -36,7 +36,15 @@ mod machines;
 
 enum AppState {
     Menu,
-    Apple1(Apple1),
+    Apple1(Box<Apple1>),
+}
+
+struct MachineStatus<'a> {
+    machine_name: &'a str,
+    paused: bool,
+    inspect_start_address: u16,
+    search_address: bool,
+    search_address_buf: &'a str,
 }
 
 fn main() -> io::Result<()> {
@@ -51,7 +59,7 @@ fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
     let mut list_state: ListState = ListState::default().with_selected(Some(0));
     let mut state: AppState = AppState::Menu;
     let mut paused: bool = false;
-    let mut search_adress: bool = false;
+    let mut search_address: bool = false;
     let mut search_address_buf: String = String::new();
 
     loop {
@@ -66,111 +74,104 @@ fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
                         &parser,
                         &apple1.cpu,
                         &mut apple1.bus,
-                        "APPLE I",
-                        paused,
-                        inspect_start_address,
-                        search_adress,
-                        &search_address_buf,
+                        MachineStatus {
+                            machine_name: "APPLE I",
+                            paused,
+                            inspect_start_address,
+                            search_address,
+                            search_address_buf: &search_address_buf,
+                        },
                     )
                 })?;
             }
         }
 
-        if event::poll(Duration::from_millis(16))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == event::KeyEventKind::Press {
-                    match &mut state {
-                        AppState::Menu => match key.code {
-                            KeyCode::Esc => return Ok(()),
-                            KeyCode::Down => list_state.select_next(),
-                            KeyCode::Up => list_state.select_previous(),
-                            KeyCode::Enter => match list_state.selected().unwrap() {
-                                0 => {
-                                    state = AppState::Apple1(Apple1::new());
-                                    last_tick = Instant::now();
-                                    parser = vt100::Parser::new(42, 80, 40);
-                                }
-                                _ => {}
-                            },
-                            _ => {}
-                        },
-                        AppState::Apple1(apple1) => {
-                            if search_adress {
-                                match key.code {
-                                    KeyCode::Char(c) => {
-                                        if c.is_ascii_hexdigit() && search_address_buf.len() < 4 {
-                                            search_address_buf.push(c.to_ascii_uppercase());
-                                        }
-                                    }
-                                    KeyCode::Backspace => {
-                                        search_address_buf.pop();
-                                    }
-                                    KeyCode::Enter => {
-                                        if let Ok(addr) =
-                                            u16::from_str_radix(&search_address_buf, 16)
-                                        {
-                                            inspect_start_address = addr & !3;
-                                        }
-                                        search_address_buf.clear();
-                                        search_adress = false;
-                                    }
-                                    KeyCode::Esc => search_adress = false,
-
-                                    _ => {}
-                                }
-                            } else {
-                                match key.code {
-                                    KeyCode::Esc => state = AppState::Menu,
-                                    KeyCode::F(1) => paused = !paused,
-                                    KeyCode::F(2) => apple1.cpu.cycle(&mut apple1.bus),
-                                    KeyCode::F(5) => {
-                                        apple1.reset();
-                                        parser = vt100::Parser::new(42, 80, 40);
-                                    }
-
-                                    KeyCode::Char(c) if c.is_ascii() => {
-                                        apple1.bus.console_write(c.to_ascii_uppercase() as u8);
-                                    }
-                                    KeyCode::Enter => {
-                                        apple1.bus.console_write(0x0D);
-                                    }
-                                    KeyCode::Backspace => {
-                                        apple1.bus.console_write(0x5F);
-                                    }
-                                    KeyCode::PageDown => {
-                                        inspect_start_address =
-                                            inspect_start_address.wrapping_add(40);
-                                    }
-                                    KeyCode::PageUp => {
-                                        inspect_start_address =
-                                            inspect_start_address.wrapping_sub(40);
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            if key.code == KeyCode::F(6) {
-                                search_adress = !search_adress;
-                            }
+        if event::poll(Duration::from_millis(16))?
+            && let Event::Key(key) = event::read()?
+            && key.kind == event::KeyEventKind::Press
+        {
+            match &mut state {
+                AppState::Menu => match key.code {
+                    KeyCode::Esc => return Ok(()),
+                    KeyCode::Down => list_state.select_next(),
+                    KeyCode::Up => list_state.select_previous(),
+                    KeyCode::Enter => {
+                        if list_state.selected().unwrap() == 0 {
+                            state = AppState::Apple1(Box::new(Apple1::new()));
+                            last_tick = Instant::now();
+                            parser = vt100::Parser::new(42, 80, 40);
                         }
+                    }
+                    _ => {}
+                },
+                AppState::Apple1(apple1) => {
+                    if search_address {
+                        match key.code {
+                            KeyCode::Char(c) => {
+                                if c.is_ascii_hexdigit() && search_address_buf.len() < 4 {
+                                    search_address_buf.push(c.to_ascii_uppercase());
+                                }
+                            }
+                            KeyCode::Backspace => {
+                                search_address_buf.pop();
+                            }
+                            KeyCode::Enter => {
+                                if let Ok(addr) = u16::from_str_radix(&search_address_buf, 16) {
+                                    inspect_start_address = addr & !3;
+                                }
+                                search_address_buf.clear();
+                                search_address = false;
+                            }
+                            KeyCode::Esc => search_address = false,
+
+                            _ => {}
+                        }
+                    } else {
+                        match key.code {
+                            KeyCode::Esc => state = AppState::Menu,
+                            KeyCode::F(1) => paused = !paused,
+                            KeyCode::F(2) => apple1.cpu.cycle(&mut apple1.bus),
+                            KeyCode::F(5) => {
+                                apple1.reset();
+                                parser = vt100::Parser::new(42, 80, 40);
+                            }
+
+                            KeyCode::Char(c) if c.is_ascii() => {
+                                apple1.bus.console_write(c.to_ascii_uppercase() as u8);
+                            }
+                            KeyCode::Enter => {
+                                apple1.bus.console_write(0x0D);
+                            }
+                            KeyCode::Backspace => {
+                                apple1.bus.console_write(0x5F);
+                            }
+                            KeyCode::PageDown => {
+                                inspect_start_address = inspect_start_address.wrapping_add(40);
+                            }
+                            KeyCode::PageUp => {
+                                inspect_start_address = inspect_start_address.wrapping_sub(40);
+                            }
+                            _ => {}
+                        }
+                    }
+                    if key.code == KeyCode::F(6) {
+                        search_address = !search_address;
                     }
                 }
             }
         }
-        match &mut state {
-            AppState::Apple1(apple1) => {
-                if !paused {
-                    apple1.consume_cycles(last_tick.elapsed());
-                }
-                last_tick = Instant::now();
-                while let Some(byte) = apple1.bus.console_read() {
-                    match byte {
-                        b'\r' => parser.process(b"\r\n"),
-                        0x5F => parser.process(b"\x08 \x08"),
-                        _ => parser.process(&[byte]),
-                    }
+        if let AppState::Apple1(apple1) = &mut state {
+            if !paused {
+                apple1.consume_cycles(last_tick.elapsed());
+            }
+            last_tick = Instant::now();
+            while let Some(byte) = apple1.bus.console_read() {
+                match byte {
+                    b'\r' => parser.process(b"\r\n"),
+                    0x5F => parser.process(b"\x08 \x08"),
+                    _ => parser.process(&[byte]),
                 }
             }
-            _ => {}
         }
     }
 }
@@ -217,11 +218,7 @@ fn render_machine<B: Bus>(
     parser: &Parser,
     cpu: &Cpu6502,
     bus: &mut B,
-    machine_name: &str,
-    paused: bool,
-    inspect_start_address: u16,
-    search_address: bool,
-    search_address_buf: &String,
+    machine_status: MachineStatus,
 ) {
     let root_layout = Layout::vertical([
         Constraint::Length(1),
@@ -232,7 +229,7 @@ fn render_machine<B: Bus>(
 
     let header_layout = Layout::horizontal([
         Constraint::Fill(1),
-        Constraint::Length(machine_name.len() as u16 + 16),
+        Constraint::Length(machine_status.machine_name.len() as u16 + 16),
     ]);
     let [head_l, head_r] = header_area.layout(&header_layout);
 
@@ -251,14 +248,17 @@ fn render_machine<B: Bus>(
     ]);
     frame.render_widget(Paragraph::new(keybinds), head_l);
 
-    let (state, color) = if !paused {
+    let (state, color) = if !machine_status.paused {
         (" > RUNNING ", Color::LightGreen)
     } else {
         (" || PAUSED ", Color::Red)
     };
 
     let machine = Line::from(vec![
-        Span::styled(machine_name, Style::new().fg(Color::Green).bold()),
+        Span::styled(
+            machine_status.machine_name,
+            Style::new().fg(Color::Green).bold(),
+        ),
         Span::raw("  "),
         Span::styled(
             state,
@@ -286,7 +286,7 @@ fn render_machine<B: Bus>(
 
     render_stack(frame, top_r, cpu, bus);
 
-    render_memory(frame, bottom_l, cpu, bus, inspect_start_address);
+    render_memory(frame, bottom_l, bus, machine_status.inspect_start_address);
 
     render_instructions(frame, bottom_r, cpu, bus);
 
@@ -299,7 +299,7 @@ fn render_machine<B: Bus>(
 
     frame.render_widget(pseudo_term, middle);
 
-    if search_address {
+    if machine_status.search_address {
         let pop_vertical = Layout::vertical([
             Constraint::Fill(1),
             Constraint::Percentage(25),
@@ -319,7 +319,7 @@ fn render_machine<B: Bus>(
             .title_alignment(Alignment::Center);
         let centered_area = popup.centered(Constraint::Percentage(60), Constraint::Percentage(20));
 
-        let paragraph = Paragraph::new(format!("0x{}█", search_address_buf))
+        let paragraph = Paragraph::new(format!("0x{}█", machine_status.search_address_buf))
             .block(popup_block)
             .alignment(Alignment::Center);
         frame.render_widget(paragraph, centered_area);
@@ -542,13 +542,7 @@ fn render_instructions<B: Bus>(frame: &mut Frame, area: Rect, cpu: &Cpu6502, bus
     frame.render_widget(Table::new(rows, widths), body);
 }
 
-fn render_memory<B: Bus>(
-    frame: &mut Frame,
-    area: Rect,
-    cpu: &Cpu6502,
-    bus: &mut B,
-    inspect_start_address: u16,
-) {
+fn render_memory<B: Bus>(frame: &mut Frame, area: Rect, bus: &mut B, inspect_start_address: u16) {
     let block = Block::bordered()
         .border_type(BorderType::Rounded)
         .title(" Memory ");

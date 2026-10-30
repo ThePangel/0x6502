@@ -1,11 +1,7 @@
-use std::arch::x86_64::CpuidResult;
-
-use ratatui::run;
-
 use crate::{
     bus::Bus,
     cpu::{
-        cpu6502::{Cpu6502, OpcodeState},
+        cpu6502::Cpu6502,
         flags::{set_break, set_interrupt_disable},
         instructions::{
             Addressing,

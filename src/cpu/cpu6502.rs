@@ -1,17 +1,10 @@
-use std::io::Seek;
-
-use ratatui::style::Stylize;
-
 use crate::{
     bus::Bus,
     cpu::{
-        self,
         addressing::resolve,
-        flags::set_break,
         instructions::{
             Addressing::Implied, Instruction, Operand, Operation::NOP, get_instruction,
         },
-        operations::run_operation,
     },
 };
 
