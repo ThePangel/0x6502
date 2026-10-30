@@ -18,7 +18,7 @@ impl Apple1 {
             remainding_cycles: 0.0,
         };
         apple1.cpu.reset(&mut apple1.bus);
-        apple1  
+        apple1
     }
     pub fn reset(&mut self) {
         self.remainding_cycles = 0.0;

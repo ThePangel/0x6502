@@ -1,10 +1,16 @@
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::{
+    self, Event,
+    KeyCode::{self, Tab},
+};
 use ratatui::{
     DefaultTerminal, Frame,
-    layout::{Constraint, Layout, Rect},
+    layout::{Alignment, Constraint, Layout, Margin, Rect},
     style::{Color, Style},
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, Gauge, List, ListState, Paragraph, Row, Table},
+    widgets::{
+        Block, BorderType, Clear, Gauge, List, ListState, Paragraph, Row, Scrollbar,
+        ScrollbarOrientation, ScrollbarState, Table,
+    },
 };
 use std::{
     io,
@@ -39,12 +45,14 @@ fn main() -> io::Result<()> {
 }
 
 fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
-    let mut last_tick = Instant::now();
-
-    let mut parser = vt100::Parser::new(24, 80, 0);
-    let mut list_state = ListState::default().with_selected(Some(0));
-    let mut state = AppState::Menu;
-    let mut paused = false;
+    let mut last_tick: Instant = Instant::now();
+    let mut inspect_start_address: u16 = 0;
+    let mut parser: Parser = vt100::Parser::new(42, 80, 40);
+    let mut list_state: ListState = ListState::default().with_selected(Some(0));
+    let mut state: AppState = AppState::Menu;
+    let mut paused: bool = false;
+    let mut search_adress: bool = false;
+    let mut search_address_buf: String = String::new();
 
     loop {
         match &mut state {
@@ -60,6 +68,9 @@ fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
                         &mut apple1.bus,
                         "APPLE I",
                         paused,
+                        inspect_start_address,
+                        search_adress,
+                        &search_address_buf,
                     )
                 })?;
             }
@@ -77,31 +88,70 @@ fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
                                 0 => {
                                     state = AppState::Apple1(Apple1::new());
                                     last_tick = Instant::now();
-                                    parser = vt100::Parser::new(24, 80, 0);
+                                    parser = vt100::Parser::new(42, 80, 40);
                                 }
                                 _ => {}
                             },
                             _ => {}
                         },
-                        AppState::Apple1(apple1) => match key.code {
-                            KeyCode::Esc => state = AppState::Menu,
-                            KeyCode::F(1) => paused = !paused,
-                            KeyCode::F(2) => apple1.cpu.cycle(&mut apple1.bus),
-                            KeyCode::F(5) => {
-                                apple1.reset();
-                                parser = vt100::Parser::new(24, 80, 0);
+                        AppState::Apple1(apple1) => {
+                            if search_adress {
+                                match key.code {
+                                    KeyCode::Char(c) => {
+                                        if c.is_ascii_hexdigit() && search_address_buf.len() < 4 {
+                                            search_address_buf.push(c.to_ascii_uppercase());
+                                        }
+                                    }
+                                    KeyCode::Backspace => {
+                                        search_address_buf.pop();
+                                    }
+                                    KeyCode::Enter => {
+                                        if let Ok(addr) =
+                                            u16::from_str_radix(&search_address_buf, 16)
+                                        {
+                                            inspect_start_address = addr & !3;
+                                        }
+                                        search_address_buf.clear();
+                                        search_adress = false;
+                                    }
+                                    KeyCode::Esc => search_adress = false,
+
+                                    _ => {}
+                                }
+                            } else {
+                                match key.code {
+                                    KeyCode::Esc => state = AppState::Menu,
+                                    KeyCode::F(1) => paused = !paused,
+                                    KeyCode::F(2) => apple1.cpu.cycle(&mut apple1.bus),
+                                    KeyCode::F(5) => {
+                                        apple1.reset();
+                                        parser = vt100::Parser::new(42, 80, 40);
+                                    }
+
+                                    KeyCode::Char(c) if c.is_ascii() => {
+                                        apple1.bus.console_write(c.to_ascii_uppercase() as u8);
+                                    }
+                                    KeyCode::Enter => {
+                                        apple1.bus.console_write(0x0D);
+                                    }
+                                    KeyCode::Backspace => {
+                                        apple1.bus.console_write(0x5F);
+                                    }
+                                    KeyCode::PageDown => {
+                                        inspect_start_address =
+                                            inspect_start_address.wrapping_add(40);
+                                    }
+                                    KeyCode::PageUp => {
+                                        inspect_start_address =
+                                            inspect_start_address.wrapping_sub(40);
+                                    }
+                                    _ => {}
+                                }
                             }
-                            KeyCode::Char(c) if c.is_ascii() => {
-                                apple1.bus.console_write(c.to_ascii_uppercase() as u8);
+                            if key.code == KeyCode::F(6) {
+                                search_adress = !search_adress;
                             }
-                            KeyCode::Enter => {
-                                apple1.bus.console_write(0x0D);
-                            }
-                            KeyCode::Backspace => {
-                                apple1.bus.console_write(0x5F);
-                            }
-                            _ => {}
-                        },
+                        }
                     }
                 }
             }
@@ -169,6 +219,9 @@ fn render_machine<B: Bus>(
     bus: &mut B,
     machine_name: &str,
     paused: bool,
+    inspect_start_address: u16,
+    search_address: bool,
+    search_address_buf: &String,
 ) {
     let root_layout = Layout::vertical([
         Constraint::Length(1),
@@ -191,6 +244,8 @@ fn render_machine<B: Bus>(
         Span::raw(" Step  "),
         Span::styled(" F5 ", Style::default().bg(Color::Cyan).fg(Color::Black)),
         Span::raw(" Reset  "),
+        Span::styled(" F6 ", Style::default().bg(Color::Cyan).fg(Color::Black)),
+        Span::raw(" Search Memory  "),
         Span::styled(" ESC ", Style::default().bg(Color::Red).fg(Color::White)),
         Span::raw(" Quit "),
     ]);
@@ -215,7 +270,7 @@ fn render_machine<B: Bus>(
     frame.render_widget(Paragraph::new(machine), head_r);
 
     let horizontal = Layout::horizontal([
-        Constraint::Percentage(21),
+        Constraint::Percentage(23),
         Constraint::Fill(1),
         Constraint::Percentage(18),
     ])
@@ -231,15 +286,10 @@ fn render_machine<B: Bus>(
 
     render_stack(frame, top_r, cpu, bus);
 
-    frame.render_widget(
-        Block::bordered()
-            .border_type(BorderType::Rounded)
-            .title("Memory"),
-        bottom_l,
-    );
+    render_memory(frame, bottom_l, cpu, bus, inspect_start_address);
 
     render_instructions(frame, bottom_r, cpu, bus);
-   
+
     let screen = parser.screen();
     let pseudo_term = PseudoTerminal::new(screen).block(
         Block::bordered()
@@ -248,6 +298,32 @@ fn render_machine<B: Bus>(
     );
 
     frame.render_widget(pseudo_term, middle);
+
+    if search_address {
+        let pop_vertical = Layout::vertical([
+            Constraint::Fill(1),
+            Constraint::Percentage(25),
+            Constraint::Fill(1),
+        ]);
+        let pop_horizontal = Layout::horizontal([
+            Constraint::Fill(1),
+            Constraint::Percentage(35),
+            Constraint::Fill(1),
+        ]);
+
+        let [_, popup_ver, _] = middle.layout(&pop_vertical);
+        let [_, popup, _] = popup_ver.layout(&pop_horizontal);
+
+        let popup_block = Block::bordered()
+            .title(" Search Address ")
+            .title_alignment(Alignment::Center);
+        let centered_area = popup.centered(Constraint::Percentage(60), Constraint::Percentage(20));
+
+        let paragraph = Paragraph::new(format!("0x{}█", search_address_buf))
+            .block(popup_block)
+            .alignment(Alignment::Center);
+        frame.render_widget(paragraph, centered_area);
+    }
 }
 
 fn render_registers(frame: &mut Frame, area: Rect, cpu: &Cpu6502) {
@@ -430,7 +506,11 @@ fn render_instructions<B: Bus>(frame: &mut Frame, area: Rect, cpu: &Cpu6502, bus
                 .map(|addr| format!("{:02X}", bus.read(addr)))
                 .collect::<Vec<String>>()
                 .join(" "),
-            format!("{:?} {}", cpu.opcode_state.current_opcode.operation, cpu.opcode_state.current_opcode.addressing.short_name()),
+            format!(
+                "{:?} {}",
+                cpu.opcode_state.current_opcode.operation,
+                cpu.opcode_state.current_opcode.addressing.short_name()
+            ),
         ])
         .style(accent),
     ];
@@ -446,7 +526,11 @@ fn render_instructions<B: Bus>(frame: &mut Frame, area: Rect, cpu: &Cpu6502, bus
                 .map(|addr| format!("{:02X}", bus.read(addr)))
                 .collect::<Vec<String>>()
                 .join(" "),
-            format!("{:?} {}", next_instruction.operation, next_instruction.addressing.short_name()),
+            format!(
+                "{:?} {}",
+                next_instruction.operation,
+                next_instruction.addressing.short_name()
+            ),
         ])
         .style(dim);
 
@@ -456,4 +540,67 @@ fn render_instructions<B: Bus>(frame: &mut Frame, area: Rect, cpu: &Cpu6502, bus
     }
 
     frame.render_widget(Table::new(rows, widths), body);
+}
+
+fn render_memory<B: Bus>(
+    frame: &mut Frame,
+    area: Rect,
+    cpu: &Cpu6502,
+    bus: &mut B,
+    inspect_start_address: u16,
+) {
+    let block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .title(" Memory ");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let widths = [
+        Constraint::Length(6),
+        Constraint::Length(2),
+        Constraint::Length(2),
+        Constraint::Length(2),
+        Constraint::Length(2),
+        Constraint::Length(2),
+        Constraint::Length(2),
+        Constraint::Length(2),
+        Constraint::Length(2),
+    ];
+
+    let rows: Vec<Row> = (0..inner.height)
+        .map(|row_idx| {
+            let row_addr = inspect_start_address.wrapping_add(row_idx * 4);
+
+            let mut cells = vec![format!("{:04X}:", row_addr)];
+
+            for offset in 0..4 {
+                let byte_val = bus.read(row_addr.wrapping_add(offset));
+                cells.push(format!("{:02X}", byte_val));
+            }
+
+            for offset in 0..4 {
+                let byte_val = bus.read(row_addr.wrapping_add(offset));
+                if (0x20..0x7E).contains(&byte_val) {
+                    cells.push(format!("{}", byte_val as char));
+                } else {
+                    cells.push("..".into());
+                }
+            }
+
+            Row::new(cells)
+        })
+        .collect();
+
+    frame.render_widget(Table::new(rows, widths), inner);
+
+    let mut vertical = ScrollbarState::new(0xFFFF).position(inspect_start_address as usize);
+    let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+    frame.render_stateful_widget(
+        scrollbar,
+        area.inner(Margin {
+            vertical: 1,
+            horizontal: 0,
+        }),
+        &mut vertical,
+    );
 }
